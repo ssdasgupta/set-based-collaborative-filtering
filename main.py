@@ -9,17 +9,17 @@ from model import MatrixFactorizationWithBias
 from trainer import Trainer
 from data_processing import DataProcessing
 
-import numpy as np
-import pandas as pd
-import os
-import sys
+
 import argparse
-import json
 import pickle
-import random
-import math
-import time
 import datetime
+import wandb
+import os
+
+#seed for reproducibility
+torch.manual_seed(1234)
+torch.backends.cudnn.deterministic = True
+torch.backends.cudnn.benchmark = False
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -37,16 +37,22 @@ def main():
     parser.add_argument('--item_attributes_data', type=str, default='data/item_attributes.csv', help='item attributes data path')
     parser.add_argument('--n_epochs', type=int, default=10, help='the number of epochs')
     parser.add_argument('--batch_size', type=int, default=1024, help='batch size')
+    parser.add_argument('--loss_type', type=str, default='mse', help='loss type')
+    parser.add_argument('--optimizer_type', type=str, default='adam', help='optimizer type')
+    parser.add_argument('--n_negs', type=int, default=5, help='the number of negative samples')
     parser.add_argument('--lr', type=float, default=0.01, help='learning rate')
     parser.add_argument('--wd', type=float, default=0.0, help='weight decay')
     parser.add_argument('--embedding_dim', type=int, default=20, help='embedding dimension')
     parser.add_argument('--seed', type=int, default=1234, help='random seed')
     parser.add_argument('--verbose', action='store_true', help='verbose')
+    parser.add_argument('--wandb', action='store_true', help='wandb')
     args = parser.parse_args()
 
     args.model_dir = os.path.join(args.model_dir, datetime.datetime.now().strftime('%Y%m%d%H%M%S'))
+    if args.wandb:
+        run = wandb.init(project="box-rec-sys", reinit=True)
    
-    dataset = DataProcessing(args.data_dir)
+    dataset = DataProcessing(args.data_dir, args.batch_size)
     n_users = len(dataset.user2id) 
     n_user_attrs = len(dataset.user_attribute2id)
     n_items = len(dataset.item2id)
@@ -58,21 +64,30 @@ def main():
     print('Building model...')
     model = MatrixFactorizationWithBias(n_users= n_users + n_item_attrs,
                                         n_items=n_items + n_user_attrs,
-                                        n_item_attrs=n_item_attrs,
                                         embedding_dim=args.embedding_dim)
 
     if args.train:
         print('Training model...')
-        trainer = Trainer(model=model,
+        trainer = Trainer(
+            model=model,
             n_users=n_users,
             n_items=n_items,
             n_user_attrs=n_user_attrs,
             n_item_attrs=n_item_attrs,
+            user_attributes_df=dataset.user_attributes_df,
+            item_attributes_df=dataset.item_attributes_df,
             train_loader=train_loader,
+            test_loader=test_loader,
+            train_gt_dict=dataset.train_gt_dict,
+            test_gt_dict=dataset.test_gt_dict,
+            loss_type=args.loss_type,
+            optimizer_type=args.optimizer_type,
+            n_negs=args.n_negs,
             device=device,
             model_dir=args.model_dir, 
             model_name=args.model_name,
-            verbose=args.verbose
+            verbose=args.verbose,
+            wandb=args.wandb
         )
         train_losses, test_losses = trainer.train(
             epochs=args.n_epochs, 
@@ -86,7 +101,7 @@ def main():
             pickle.dump(train_losses, f)
         with open(os.path.join(args.model_dir, 'test_losses.pkl'), 'wb') as f:
             pickle.dump(test_losses, f)
-        
+
     
     # <<<<<<<<<TODO>>>>>>>>>> #
     ## 1. Evaluate the model. Implement rank based metrics.
