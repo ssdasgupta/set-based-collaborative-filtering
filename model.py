@@ -25,20 +25,15 @@ class MatrixFactorization(nn.Module):
         return user_item_interaction
 
     def predict_item(self, user):
-        return self.forward(user, torch.arange)
+        return self.forward(user, torch.arange(self.n_items).to(device))
 
 
-class MatrixFactorizationWithBias(nn.Module):
+class MatrixFactorizationWithBias(MatrixFactorization):
     def __init__(self,
                  n_users,
                  n_items,
                  embedding_dim=20):
-        super().__init__()
-        self.n_users = n_users
-        self.n_items = n_items
-        self.embedding_dim = embedding_dim
-        self.user_embeddings = nn.Embedding(n_users, embedding_dim)
-        self.item_embeddings = nn.Embedding(n_items, embedding_dim)
+        super().__init__(n_users, n_items, embedding_dim)
         self.user_biases = nn.Embedding(n_users, 1)
         self.item_biases = nn.Embedding(n_items, 1)
 
@@ -51,6 +46,3 @@ class MatrixFactorizationWithBias(nn.Module):
         user_bias = self.user_biases(user)
         item_bias = self.item_biases(item)
         return user_item_interaction + user_bias.squeeze(-1) + item_bias.squeeze(-1)
-
-    def predict_item(self, user):
-        return self.forward(user, torch.arange(self.n_items).to(device))

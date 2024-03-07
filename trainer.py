@@ -154,6 +154,7 @@ class Trainer:
                 loss.backward()
                 optimizer.step()
                 train_loss += loss.item()
+
             train_loss = train_loss / len(self.train_loader)
             train_losses.append(train_loss)
 
