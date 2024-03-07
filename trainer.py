@@ -29,7 +29,6 @@ class Trainer:
             device,
             model_dir,
             model_name,
-            verbose,
             wandb
     ):
         self.model = model
@@ -44,7 +43,6 @@ class Trainer:
         self.device = device
         self.model_dir = model_dir
         self.model_name = model_name
-        self.verbose = verbose
         self.user_attributes_df = user_attributes_df
         self.item_attributes_df = item_attributes_df
         self.n_negs = n_negs
@@ -95,7 +93,6 @@ class Trainer:
         for epoch in range(epochs):
             train_loss = 0.0
             for i, batch in enumerate(self.train_loader):
-
                 user_stream, item_stream, tuple_type = batch[0][:,0], batch[0][:,1], batch[0][:,2]
                 user_stream = user_stream.to(self.device)
                 item_stream = item_stream.to(self.device)
@@ -114,27 +111,46 @@ class Trainer:
                 label = torch.cat([torch.ones_like(pos_outputs), torch.zeros_like(neg_outputs)], dim=-1)
                 user_item_loss = criterion['user_item'](pred, label)
 
-                # user-attr training
-                user_ua = user_stream[tuple_type == 1]
-                attr_ua = item_stream[tuple_type == 1]
-                user_attr_neg = self.random_negative_sample(attr_ua, self.n_user_attrs)
-                pos_outputs_ua = self.model(user_ua, attr_ua + self.n_items).unsqueeze_(-1)
-                neg_outputs_ua = self.model(user_ua, user_attr_neg + self.n_items)
-                pred_ua = torch.cat([pos_outputs_ua, neg_outputs_ua], dim=-1)
-                label_ua = torch.cat([torch.ones_like(pos_outputs_ua), torch.zeros_like(neg_outputs_ua)], dim=-1)
-                user_attr_loss = criterion['user_attr'](pred_ua, label_ua)
-                # item-attr training
-                attr = user_stream[tuple_type == 2]
-                item = item_stream[tuple_type == 2]
-                item_neg = self.random_negative_sample(item, self.n_items)
-                pos_outputs = self.model(attr + self.n_users, item).unsqueeze_(-1)
-                neg_outputs = self.model(attr + self.n_users, item_neg)
-                pred = torch.cat([pos_outputs, neg_outputs], dim=-1)
-                label = torch.cat([torch.ones_like(pos_outputs), torch.zeros_like(neg_outputs)], dim=-1)
-                item_attr_loss = criterion['item_attr'](pred, label)
+                if self.n_user_attrs > 0:
+                    # user-attr training
+                    user_ua = user_stream[tuple_type == 1]
+                    attr_ua = item_stream[tuple_type == 1]
+                    user_attr_neg = self.random_negative_sample(attr_ua, self.n_user_attrs)
+                    pos_outputs_ua = self.model(user_ua, attr_ua + self.n_items).unsqueeze_(-1)
+                    neg_outputs_ua = self.model(user_ua, user_attr_neg + self.n_items)
+                    pred_ua = torch.cat([pos_outputs_ua, neg_outputs_ua], dim=-1)
+                    label_ua = torch.cat([torch.ones_like(pos_outputs_ua), torch.zeros_like(neg_outputs_ua)], dim=-1)
+                    user_attr_loss = criterion['user_attr'](pred_ua, label_ua)
+                else:
+                    user_attr_loss = 0.0
+
+                if self.n_item_attrs > 0:
+                    # item-attr training
+                    attr = user_stream[tuple_type == 2]
+                    item = item_stream[tuple_type == 2]
+                    item_neg = self.random_negative_sample(item, self.n_items)
+                    pos_outputs = self.model(attr + self.n_users, item).unsqueeze_(-1)
+                    neg_outputs = self.model(attr + self.n_users, item_neg)
+                    pred = torch.cat([pos_outputs, neg_outputs], dim=-1)
+                    label = torch.cat([torch.ones_like(pos_outputs), torch.zeros_like(neg_outputs)], dim=-1)
+                    item_attr_loss = criterion['item_attr'](pred, label)
+                else:
+                    item_attr_loss = 0.0
 
                 optimizer.zero_grad()
                 loss = 0.6 * user_item_loss + 0.2 * user_attr_loss + 0.2 * item_attr_loss
+                if torch.isnan(loss).any():
+                    print('nan loss')
+                    if self.wandb:
+                        wandb.log({'nan_loss': loss.item()})
+                    break
+                if torch.isinf(loss).any():
+                    print('inf loss')
+                    if self.wandb:
+                        wandb.log({'inf_loss': loss.item()})
+                    break
+                if self.wandb:
+                    wandb.log({'loss': loss.item()})
                 loss.backward()
                 optimizer.step()
                 train_loss += loss.item()
@@ -143,8 +159,7 @@ class Trainer:
 
             self.eval_metrices = self.evaluate()
             pprint.pprint(self.eval_metrices)
-            if self.verbose:
-                print('epoch: {}, train loss: {}, test loss: {}'.format(epoch, train_loss, train_loss))
+            print('epoch: {}, train loss: {}, test loss: {}'.format(epoch, train_loss, train_loss))
             if self.wandb:
                 wandb.log(self.eval_metrices)
 

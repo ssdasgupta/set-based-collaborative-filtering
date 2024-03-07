@@ -27,10 +27,11 @@ def NDCG(pred, gt, k=1):
 
 def MRR(pred, gt, k=1):
     pred = pred[:k]
+    mrr = 0.0
     for i, p in enumerate(pred):
         if p in gt:
-            return 1.0 / (i + 1)
-    return 0.0
+            mrr += 1.0 / (i + 1)
+    return mrr
 
 def MAP(pred, gt, k=1):
     pred = pred[:k]

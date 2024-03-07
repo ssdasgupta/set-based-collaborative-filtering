@@ -90,3 +90,43 @@ class DataProcessing:
                                     torch.LongTensor(test_item_ids))
         self.test_loader = DataLoader(test_dataset, batch_size=self.batch_size, shuffle=False)
         return self.test_loader
+
+
+class MovieLensDataProcessing:
+    def __init__(self, data_dir, batch_size=128):
+        self.data_dir = data_dir
+        self.batch_size = batch_size
+        self.train_df = pd.read_csv(os.path.join(self.data_dir, 'train.csv'))
+        self.val_df = pd.read_csv(os.path.join(self.data_dir, 'val.csv'))
+        self.test_df = pd.read_csv(os.path.join(self.data_dir, 'test.csv'))
+        self.user2id = self.get_id_dict(self.train_df, field='user_id')
+        self.item2id = self.get_id_dict(self.train_df, field='item_id')
+ 
+    def get_id_dict(self, df, field='id'):
+        ids = sorted(list(set(df[field].unique().tolist())))
+        id2id = {id: i for i, id in enumerate(ids)}
+        return id2id
+
+    def load_data(self, data):
+        user = data['user_id'].values
+        item = data['item_id'].values
+        data_tuples = list(zip(user, item, [matrix_table['user-item']] * len(item)))
+        dataset = TensorDataset(torch.LongTensor(data_tuples))
+        return DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+
+    def get_loader(self):
+        return self.load_data(self.train_df)
+
+    def get_val_loader(self):
+        return self.load_data(self.val_df)
+
+    def get_test_loader(self):
+        return self.load_data(self.test_df)
+
+    def get_gt_dict(self, df):
+        gt_dict = {}
+        for user_id, item_id in zip(df['user_id'].values, df['item_id'].values):
+            if user_id not in gt_dict:
+                gt_dict[user_id] = []
+            gt_dict[user_id].append(item_id)
+        return gt_dict
