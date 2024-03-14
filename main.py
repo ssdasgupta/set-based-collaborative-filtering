@@ -1,22 +1,21 @@
+import random
+import numpy as np
 import torch
 
 
 from torch.utils.data import DataLoader
 from torch.utils.data import TensorDataset
 
-from model import MatrixFactorization
-from model import MatrixFactorizationWithBias
+from model import MatrixFactorization, MatrixFactorizationWithBias
+from model.box_model import BoxRec
 from trainer import Trainer
 from data_processing import DataProcessing, MovieLensDataProcessing
 
 
 import argparse
-import pickle
 import datetime
 import wandb
 import os
-
-#seed for reproducibility
 
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
@@ -26,28 +25,82 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 def main():
     print('Parsing arguments...')
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model_dir', type=str, default='model', help='model directory path')
-    parser.add_argument('--model_name', type=str, default='model.pth', help='model name')
-    parser.add_argument('--model', type=str, default='mf', choices=['mf', 'mf_bias'], help='model name')
-    parser.add_argument('--dataset', type=str, default='synthetic', help='model type')
-    parser.add_argument('--data_dir', type=str, default='data/', help='model type')
-    parser.add_argument('--user_attributes_data', type=str, default=None, help='user attributes data path')
-    parser.add_argument('--item_attributes_data', type=str, default=None, help='item attributes data path')
+
+    ## model related input parameters
+    parser.add_argument('--model_dir',
+                        type=str,
+                        default='model',
+                        help='model directory path')
+    parser.add_argument('--model_name',
+                        type=str,
+                        default='model.pth',
+                        help='model name')
+    parser.add_argument('--model',
+                        type=str, default='mf',
+                        choices=['mf', 'mf_bias', 'box'],
+                        help='model name')
+    parser.add_argument('--embedding_dim',
+                        type=int,
+                        default=20,
+                        help='embedding dimension. For boxes use half the dimension size')
+    parser.add_argument('--box_type',
+                        type=str,
+                        default='BoxTensor',
+                        help='box type')
+    parser.add_argument('--volume_temp',
+                        type=float,
+                        default=1.0,
+                        help='volume temperature')
+    parser.add_argument('--intersection_temp',
+                        type=float,
+                        default=0.1,
+                        help='intersection temperature')
+
+    ## data related input parameters
+    parser.add_argument('--dataset',
+                        type=str,
+                        default='synthetic',
+                        help='model type')
+    parser.add_argument('--data_dir',
+                        type=str,
+                        default='data/',
+                        help='model type')
+    parser.add_argument('--user_attributes_data',
+                        type=str, default=None,
+                        help='user attributes data path')
+    parser.add_argument('--item_attributes_data',
+                        type=str,
+                        default=None,
+                        help='item attributes data path')
+
+    ## training related input parameters
     parser.add_argument('--n_epochs', type=int, default=10, help='the number of epochs')
     parser.add_argument('--batch_size', type=int, default=1024, help='batch size')
-    parser.add_argument('--loss_type', type=str, default='mse', help='loss type')
+    parser.add_argument('--loss_type',
+                        type=str,
+                        default='bce',
+                        choices=['bce', 'max-margin', 'mse'],
+                        help='loss type')
     parser.add_argument('--optimizer_type', type=str, default='adam', help='optimizer type')
     parser.add_argument('--n_negs', type=int, default=5, help='the number of negative samples')
     parser.add_argument('--lr', type=float, default=0.01, help='learning rate')
     parser.add_argument('--wd', type=float, default=0.0, help='weight decay')
-    parser.add_argument('--embedding_dim', type=int, default=20, help='embedding dimension')
-    parser.add_argument('--seed', type=int, default=1234, help='random seed')
+
+    ## Logging and reproducibility
+    parser.add_argument('--seed', type=int, default=None, help='random seed')
     parser.add_argument('--wandb', action='store_true', help='wandb')
     parser.add_argument('--save_model', action='store_true', help='save model')
+    parser.add_argument('--verbose', action='store_true', help='verbose')
     args = parser.parse_args()
 
     args.model_dir = os.path.join(args.model_dir, datetime.datetime.now().strftime('%Y%m%d%H%M%S'))
+    if args.seed is None:
+        args.seed = random.randint(0, 2 ** 32)
     torch.manual_seed(args.seed)
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    
     if args.wandb:
         run = wandb.init(project="box-rec-sys", reinit=True)
         wandb.config.update(args)
@@ -84,6 +137,13 @@ def main():
         model = MatrixFactorizationWithBias(n_users= n_users + n_item_attrs,
                                             n_items=n_items + n_user_attrs,
                                             embedding_dim=args.embedding_dim)
+    elif args.model == 'box':
+        model = BoxRec(n_users=n_users + n_item_attrs,
+                        n_items=n_items + n_user_attrs,
+                        embedding_dim=args.embedding_dim,
+                        box_type=args.box_type,
+                        volume_temp=args.volume_temp,
+                        intersection_temp=args.intersection_temp)
 
     model.to(device)
     print('Training model...')

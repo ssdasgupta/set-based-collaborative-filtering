@@ -54,7 +54,7 @@ class Trainer:
     def get_criteria(self, loss_type):
         if loss_type == 'mse':
             return nn.MSELoss()
-        elif loss_type == 'bpr':
+        elif loss_type == 'bce':
             return nn.BCEWithLogitsLoss()
         elif loss_type == 'max-margin':
             return nn.MarginRankingLoss()
@@ -84,9 +84,9 @@ class Trainer:
         self.model.to(self.device)
         optimizer = self.get_optimizer(self.optimizer_type, self.model, lr, wd)  # do we need to use sparseadam? or adam is fine?
         criterion = {
-            'user_item': nn.BCEWithLogitsLoss(),
-            'user_attr': nn.BCEWithLogitsLoss(),
-            'item_attr': nn.BCEWithLogitsLoss(),
+            'user_item': self.get_criteria(self.loss_type),
+            'user_attr': self.get_criteria(self.loss_type),
+            'item_attr': self.get_criteria(self.loss_type),
         }
         train_losses = []
         test_losses = []
