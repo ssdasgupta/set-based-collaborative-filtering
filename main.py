@@ -107,23 +107,29 @@ def main():
     
     if args.dataset == 'synthetic':
         dataset = DataProcessing(args.data_dir, args.batch_size)
-    elif args.dataset == 'movielens':
-        dataset = MovieLensDataProcessing(args.data_dir, args.batch_size)
-        dataset.user_attributes_df = None
-        dataset.item_attributes_df = None
+    elif args.dataset == 'movielens' or args.dataset == 'movielens-genre':
+        dataset = MovieLensDataProcessing(data_dir=args.data_dir,
+                                          dataset_type=args.dataset,
+                                          batch_size=args.batch_size)
         dataset.train_gt_dict = dataset.get_gt_dict(dataset.train_df)
         dataset.test_gt_dict = dataset.get_gt_dict(dataset.test_df)
     else:
         raise NotImplementedError
+
     n_users = len(dataset.user2id)
     n_items = len(dataset.item2id)
-
     if args.dataset == 'synthetic':
         n_user_attrs = len(dataset.user_attribute2id)
         n_item_attrs = len(dataset.item_attribute2id)
-    else:
+    elif args.dataset == 'movielens-genre':
+        n_user_attrs = 0
+        n_item_attrs = len(dataset.item_attribute2id)
+    elif args.dataset == 'movielens':
         n_user_attrs = 0
         n_item_attrs = 0
+    else:
+        raise NotImplementedError
+
     train_loader = dataset.get_loader()
     test_loader = dataset.get_test_loader()
 
@@ -146,6 +152,7 @@ def main():
                         intersection_temp=args.intersection_temp)
 
     model.to(device)
+
     print('Training model...')
     trainer = Trainer(
         model=model,
@@ -153,8 +160,6 @@ def main():
         n_items=n_items,
         n_user_attrs=n_user_attrs,
         n_item_attrs=n_item_attrs,
-        user_attributes_df=dataset.user_attributes_df,
-        item_attributes_df=dataset.item_attributes_df,
         train_loader=train_loader,
         test_loader=test_loader,
         train_gt_dict=dataset.train_gt_dict,

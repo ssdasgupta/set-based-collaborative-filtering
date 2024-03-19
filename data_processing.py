@@ -93,28 +93,51 @@ class DataProcessing:
 
 
 class MovieLensDataProcessing:
-    def __init__(self, data_dir, batch_size=128):
+    def __init__(self, data_dir, dataset_type='movielens', batch_size=128):
         self.data_dir = data_dir
+        self.dataset_type = dataset_type
         self.batch_size = batch_size
+        self.read_data_files()
+        self.read_id_files()
+
+    def read_data_files(self):
         self.train_df = pd.read_csv(os.path.join(self.data_dir, 'train.csv'))
         self.val_df = pd.read_csv(os.path.join(self.data_dir, 'val.csv'))
         self.test_df = pd.read_csv(os.path.join(self.data_dir, 'test.csv'))
-        self.user2id = self.get_id_dict(self.train_df, field='user_id')
-        self.item2id = self.get_id_dict(self.train_df, field='item_id')
- 
+        if self.dataset_type == 'movielens-genre':
+            self.item_attributes_df = pd.read_csv(os.path.join(self.data_dir, 'tag2movie.csv'))
+    
+    def read_id_files(self):
+        self.user2id_df = pd.read_csv(os.path.join(self.data_dir, 'user2id.csv'))
+        self.item2id_df = pd.read_csv(os.path.join(self.data_dir, 'movie2id.csv'))
+        if self.dataset_type == 'movielens-genre':
+            self.item_attribute2id_df = pd.read_csv(os.path.join(self.data_dir, 'tag2id.csv'))
+        
+        self.user2id = {i: i for i in self.user2id_df['userId'].values}
+        self.item2id = {i: i for i in self.item2id_df['movieId'].values}
+        if self.dataset_type == 'movielens-genre':
+            self.item_attribute2id = {i: i for i in self.item_attribute2id_df['tagId'].values}
+
     def get_id_dict(self, df, field='id'):
         ids = sorted(list(set(df[field].unique().tolist())))
         id2id = {id: i for i, id in enumerate(ids)}
         return id2id
 
-    def load_data(self, data):
-        user = data['user_id'].values
-        item = data['item_id'].values
+    def load_data(self, data, tag_data=None):
+        user = data['userId'].values
+        item = data['movieId'].values
         data_tuples = list(zip(user, item, [matrix_table['user-item']] * len(item)))
+        if self.dataset_type == 'movielens-genre' and tag_data is not None:
+            tag = tag_data['tagId'].values
+            item = tag_data['movieId'].values
+            tag_tuples = list(zip(tag, item, [matrix_table['attr-item']] * len(item)))
+            data_tuples += tag_tuples
         dataset = TensorDataset(torch.LongTensor(data_tuples))
         return DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
 
     def get_loader(self):
+        if self.dataset_type == 'movielens-genre':
+            return self.load_data(self.train_df, self.item_attributes_df)
         return self.load_data(self.train_df)
 
     def get_val_loader(self):
@@ -122,11 +145,14 @@ class MovieLensDataProcessing:
 
     def get_test_loader(self):
         return self.load_data(self.test_df)
+    
+    def get_tag_loader(self):
+        return self.load_data(self.item_attributes_df)
 
     def get_gt_dict(self, df):
         gt_dict = {}
-        for user_id, item_id in zip(df['user_id'].values, df['item_id'].values):
-            if user_id not in gt_dict:
-                gt_dict[user_id] = []
-            gt_dict[user_id].append(item_id)
+        for userId, itemId in zip(df['userId'].values, df['movieId'].values):
+            if userId not in gt_dict:
+                gt_dict[userId] = []
+            gt_dict[userId].append(itemId)
         return gt_dict
