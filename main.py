@@ -9,7 +9,7 @@ from torch.utils.data import TensorDataset
 from model import MatrixFactorization, MatrixFactorizationWithBias
 from model.box_model import BoxRec
 from trainer import Trainer
-from data_processing import DataProcessing, MovieLensDataProcessing
+from data_loaders.data_processing import DataProcessing, MovieLensDataProcessing
 
 
 import argparse

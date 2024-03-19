@@ -72,7 +72,7 @@ class Trainer:
         # user_ids: (batch_size, )
         # item_ids: (batch_size, )
         batch_size = ids.size(0)
-        neg_ids = torch.randint(low=0, high=n, size=(batch_size, n_negs)).to(self.device)
+        neg_ids = torch.randint(low=0, high=n, size=(batch_size, n_negs), device=self.device)
         return neg_ids
 
 
