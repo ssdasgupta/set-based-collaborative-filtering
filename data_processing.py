@@ -3,6 +3,7 @@ import pandas as pd
 import torch
 from torch.utils.data import TensorDataset, DataLoader
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 matrix_table = {
     'user-item': 0,
@@ -132,7 +133,7 @@ class MovieLensDataProcessing:
             item = tag_data['movieId'].values
             tag_tuples = list(zip(tag, item, [matrix_table['attr-item']] * len(item)))
             data_tuples += tag_tuples
-        dataset = TensorDataset(torch.LongTensor(data_tuples))
+        dataset = TensorDataset(torch.LongTensor(data_tuples).to(device))
         return DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
 
     def get_loader(self):
