@@ -2,6 +2,7 @@ import torch
 from torch import nn
 import torch.optim as optim
 import os
+from tqdm import tqdm
 import pprint
 import wandb
 
@@ -17,8 +18,6 @@ class Trainer:
             n_items,
             n_user_attrs,
             n_item_attrs,
-            user_attributes_df,
-            item_attributes_df,
             train_loader,
             test_loader,
             train_gt_dict,
@@ -43,8 +42,6 @@ class Trainer:
         self.device = device
         self.model_dir = model_dir
         self.model_name = model_name
-        self.user_attributes_df = user_attributes_df
-        self.item_attributes_df = item_attributes_df
         self.n_negs = n_negs
         self.loss_type = loss_type
         self.optimizer_type = optimizer_type
@@ -92,7 +89,7 @@ class Trainer:
         test_losses = []
         for epoch in range(epochs):
             train_loss = 0.0
-            for i, batch in enumerate(self.train_loader):
+            for batch in tqdm(self.train_loader):
                 user_stream, item_stream, tuple_type = batch[0][:,0], batch[0][:,1], batch[0][:,2]
                 user_stream = user_stream.to(self.device)
                 item_stream = item_stream.to(self.device)
@@ -111,7 +108,7 @@ class Trainer:
                 label = torch.cat([torch.ones_like(pos_outputs), torch.zeros_like(neg_outputs)], dim=-1)
                 user_item_loss = criterion['user_item'](pred, label)
 
-                if self.n_user_attrs > 0:
+                if self.n_user_attrs > 0 and 1 in tuple_type:
                     # user-attr training
                     user_ua = user_stream[tuple_type == 1]
                     attr_ua = item_stream[tuple_type == 1]
@@ -124,7 +121,7 @@ class Trainer:
                 else:
                     user_attr_loss = 0.0
 
-                if self.n_item_attrs > 0:
+                if self.n_item_attrs > 0 and 2 in tuple_type:
                     # item-attr training
                     attr = user_stream[tuple_type == 2]
                     item = item_stream[tuple_type == 2]
@@ -173,7 +170,7 @@ class Trainer:
         self.model.eval()
         with torch.no_grad():
             recall_1, recall_5, recall_50, precision_1, precision_5, precision_10, ap, ndcg_1, ndcg_5, ndcg_10, mrr, mr = [], [], [], [], [], [], [], [], [], [], [], []
-            for user, items in self.test_gt_dict.items():
+            for user, items in tqdm(self.test_gt_dict.items()):
                 gt = self.test_gt_dict[user]
                 mask = torch.LongTensor(self.train_gt_dict[user]).to(self.device)
 
