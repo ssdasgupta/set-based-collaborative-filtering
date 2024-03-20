@@ -178,7 +178,7 @@ class Trainer:
     def evaluate(self):
         self.model.eval()
         with torch.no_grad():
-            mrr, mr = [], [], []
+            mrr, mr = [], []
             for batch in tqdm(self.val_loader):
                 user_stream, item_stream = batch[0][:,0], batch[0][:,1]
                 user_stream = user_stream.to(self.device)
