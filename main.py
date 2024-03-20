@@ -130,7 +130,7 @@ def main():
         raise NotImplementedError
 
     train_loader = dataset.get_loader()
-    test_loader = dataset.get_test_loader()
+    val_loader = dataset.get_val_loader()
 
 
     print('Building model... ')
@@ -160,7 +160,7 @@ def main():
         n_user_attrs=n_user_attrs,
         n_item_attrs=n_item_attrs,
         train_loader=train_loader,
-        test_loader=test_loader,
+        val_loader=val_loader,
         gt_dict = gt_dict,
         loss_type=args.loss_type,
         optimizer_type=args.optimizer_type,

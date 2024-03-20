@@ -19,7 +19,7 @@ class Trainer:
             n_user_attrs,
             n_item_attrs,
             train_loader,
-            test_loader,
+            val_loader,
             gt_dict,
             loss_type,
             optimizer_type,
@@ -35,7 +35,7 @@ class Trainer:
         self.n_user_attrs = n_user_attrs
         self.n_item_attrs = n_item_attrs
         self.train_loader = train_loader
-        self.test_loader = test_loader
+        self.val_loader = val_loader
         self.gt_dict = gt_dict
         self.device = device
         self.model_dir = model_dir
@@ -167,13 +167,11 @@ class Trainer:
         return train_losses, test_losses
     
     def get_mask(self, user_list, item_list):
-        mask = []
+        mask = torch.ones((user_list.size(0), self.n_items), dtype=torch.bool, device=self.device)
         for i, user in enumerate(user_list):
-            user_mask = torch.ones(self.n_items, dtype=torch.bool, device=self.device)
-            user_mask[self.gt_dict[user.item()]] = False
-            user_mask[item_list[i]] = True
-            mask.append(user_mask)
-        mask = torch.stack(mask).to(self.device)
+            idx_mask = torch.LongTensor(self.gt_dict[user.item()], device=self.device)
+            mask[i, idx_mask] = False
+            mask[i, item_list[i]] = True
         return mask
 
     def evaluate(self):
@@ -183,7 +181,7 @@ class Trainer:
             precision_1, precision_5, precision_10 = [], [], []
             ndcg_1, ndcg_5, ndcg_10 = [], [], []
             ap, mrr, mr = [], [], []
-            for batch in tqdm(self.train_loader):
+            for batch in tqdm(self.val_loader):
                 user_stream, item_stream = batch[0][:,0], batch[0][:,1]
                 user_stream = user_stream.to(self.device)
                 item_stream = item_stream.to(self.device)
