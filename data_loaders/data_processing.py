@@ -109,6 +109,7 @@ class MovieLensDataProcessing:
         self.gt_df = pd.read_csv(os.path.join(self.data_dir, 'gt.csv'))
         if self.dataset_type == 'movielens-genre':
             self.item_attributes_df = pd.read_csv(os.path.join(self.data_dir, 'tag2movie.csv'))
+        print('Data files read successfully...')
     
     def read_id_files(self):
         self.user2id_df = pd.read_csv(os.path.join(self.data_dir, 'user2id.csv'))
@@ -120,6 +121,7 @@ class MovieLensDataProcessing:
         self.item2id = {i: i for i in self.item2id_df['movieId'].values}
         if self.dataset_type == 'movielens-genre':
             self.item_attribute2id = {i: i for i in self.item_attribute2id_df['tagId'].values}
+        print('ID files read successfully...')
 
     def get_id_dict(self, df, field='id'):
         ids = sorted(list(set(df[field].unique().tolist())))

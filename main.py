@@ -111,7 +111,9 @@ def main():
         dataset = MovieLensDataProcessing(data_dir=args.data_dir,
                                           dataset_type=args.dataset,
                                           batch_size=args.batch_size)
+        print('Loading ground truth...')
         gt_dict = dataset.get_gt_dict(dataset.gt_df)
+        print('Ground truth loaded')
     else:
         raise NotImplementedError
 
@@ -128,9 +130,11 @@ def main():
         n_item_attrs = 0
     else:
         raise NotImplementedError
-
+    
+    print('Building data loaders...')
     train_loader = dataset.get_loader()
     val_loader = dataset.get_val_loader()
+    print('Data loaders built')
 
 
     print('Building model... ')
