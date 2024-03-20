@@ -84,10 +84,10 @@ class Trainer:
         }
         train_losses = []
         test_losses = []
+        self.eval_metrices = self.evaluate()
+        pprint.pprint(self.eval_metrices)
         for epoch in range(epochs):
             train_loss = 0.0
-            self.eval_metrices = self.evaluate()
-            pprint.pprint(self.eval_metrices)
             self.model.train()
             for batch in tqdm(self.train_loader):
                 user_stream, item_stream, tuple_type = batch[0][:,0], batch[0][:,1], batch[0][:,2]
@@ -169,18 +169,16 @@ class Trainer:
     def get_mask(self, user_list, item_list):
         mask = torch.ones((user_list.size(0), self.n_items), dtype=torch.bool, device=self.device)
         for i, user in enumerate(user_list):
-            idx_mask = torch.LongTensor(self.gt_dict[user.item()], device=self.device)
+            idx_mask = torch.tensor(self.gt_dict[user.item()], device=self.device)
             mask[i, idx_mask] = False
             mask[i, item_list[i]] = True
         return mask
 
+
     def evaluate(self):
         self.model.eval()
         with torch.no_grad():
-            recall_1, recall_5, recall_50 = [], [], []
-            precision_1, precision_5, precision_10 = [], [], []
-            ndcg_1, ndcg_5, ndcg_10 = [], [], []
-            ap, mrr, mr = [], [], []
+            mrr, mr = [], [], []
             for batch in tqdm(self.val_loader):
                 user_stream, item_stream = batch[0][:,0], batch[0][:,1]
                 user_stream = user_stream.to(self.device)
@@ -188,32 +186,11 @@ class Trainer:
                 mask = self.get_mask(user_stream, item_stream)
                 all_item_score = self.model.predict_item(user_stream.reshape(1, -1)).T
                 all_item_score[~mask] = - torch.inf
-                pred_order = torch.argsort(all_item_score, dim=-1, descending=True).tolist()
-
-                recall_1.extend(run_eval('recall@k', pred_order, item_stream, k=1))
-                recall_5.extend(run_eval('recall@k', pred_order, item_stream, k=5))
-                recall_50.extend(run_eval('recall@k', pred_order, item_stream, k=10))
-                precision_1.extend(run_eval('precision@k', pred_order, item_stream, k=1))
-                precision_5.extend(run_eval('precision@k', pred_order, item_stream, k=5))
-                precision_10.extend(run_eval('precision@k', pred_order, item_stream, k=10))
-                ap.extend(run_eval('AP', pred_order, item_stream, k=10))
-                ndcg_1.extend(run_eval('NDCG', pred_order, item_stream, k=1))
-                ndcg_5.extend(run_eval('NDCG', pred_order, item_stream, k=5))
-                ndcg_10.extend(run_eval('NDCG', pred_order, item_stream, k=10))
-                mrr.extend(run_eval('MRR', pred_order, item_stream, k=10))
-                mr.extend(run_eval('MR', pred_order, item_stream))
-
+                pred_order = torch.argsort(all_item_score, dim=-1, descending=True)
+                rank = torch.where(pred_order == item_stream.reshape(-1, 1))[1] + 1
+                mr.extend(rank.tolist())
+                mrr.extend((1.0 / (rank)).tolist())
             eval_metrices = {
-                'recall_1': sum(recall_1) / len(recall_1),
-                'recall_5': sum(recall_5) / len(recall_5),
-                'recall_50': sum(recall_50) / len(recall_50),
-                'precision_1': sum(precision_1) / len(precision_1),
-                'precision_5': sum(precision_5) / len(precision_5),
-                'precision_10': sum(precision_10) / len(precision_10),
-                'ap': sum(ap) / len(ap),
-                'ndcg_1': sum(ndcg_1) / len(ndcg_1),
-                'ndcg_5': sum(ndcg_5) / len(ndcg_5),
-                'ndcg_10': sum(ndcg_10) / len(ndcg_10),
                 'mrr': sum(mrr) / len(mrr), 
                 'mr': sum(mr) / len(mr)
             }
