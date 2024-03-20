@@ -106,6 +106,7 @@ class MovieLensDataProcessing:
         self.train_df = pd.read_csv(os.path.join(self.data_dir, 'train.csv'))
         self.val_df = pd.read_csv(os.path.join(self.data_dir, 'val.csv'))
         self.test_df = pd.read_csv(os.path.join(self.data_dir, 'test.csv'))
+        self.gt_df = pd.read_csv(os.path.join(self.data_dir, 'gt.csv'))
         if self.dataset_type == 'movielens-genre':
             self.item_attributes_df = pd.read_csv(os.path.join(self.data_dir, 'tag2movie.csv'))
     

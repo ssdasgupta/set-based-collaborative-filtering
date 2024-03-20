@@ -111,8 +111,7 @@ def main():
         dataset = MovieLensDataProcessing(data_dir=args.data_dir,
                                           dataset_type=args.dataset,
                                           batch_size=args.batch_size)
-        dataset.train_gt_dict = dataset.get_gt_dict(dataset.train_df)
-        dataset.test_gt_dict = dataset.get_gt_dict(dataset.test_df)
+        gt_dict = dataset.get_gt_dict(dataset.gt_df)
     else:
         raise NotImplementedError
 
@@ -162,8 +161,7 @@ def main():
         n_item_attrs=n_item_attrs,
         train_loader=train_loader,
         test_loader=test_loader,
-        train_gt_dict=dataset.train_gt_dict,
-        test_gt_dict=dataset.test_gt_dict,
+        gt_dict = gt_dict,
         loss_type=args.loss_type,
         optimizer_type=args.optimizer_type,
         n_negs=args.n_negs,
