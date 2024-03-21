@@ -36,6 +36,7 @@ class MatrixFactorizationWithBias(MatrixFactorization):
         super().__init__(n_users, n_items, embedding_dim)
         self.user_biases = nn.Embedding(n_users, 1)
         self.item_biases = nn.Embedding(n_items, 1)
+        self.global_bias = nn.Parameter(torch.zeros(1))
 
     def forward(self, user, item):
         if len(user.shape) > len(item.shape):
@@ -45,4 +46,4 @@ class MatrixFactorizationWithBias(MatrixFactorization):
         user_item_interaction = (self.user_embeddings(user) * self.item_embeddings(item)).sum(-1)
         user_bias = self.user_biases(user)
         item_bias = self.item_biases(item)
-        return user_item_interaction + user_bias.squeeze(-1) + item_bias.squeeze(-1)
+        return user_item_interaction + user_bias.squeeze(-1) + item_bias.squeeze(-1) + self.global_bias

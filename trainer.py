@@ -20,6 +20,7 @@ class Trainer:
             n_item_attrs,
             train_loader,
             val_loader,
+            val_neg_df,
             gt_dict,
             loss_type,
             optimizer_type,
@@ -36,6 +37,7 @@ class Trainer:
         self.n_item_attrs = n_item_attrs
         self.train_loader = train_loader
         self.val_loader = val_loader
+        self.val_neg_df = val_neg_df
         self.gt_dict = gt_dict
         self.device = device
         self.model_dir = model_dir
@@ -48,11 +50,11 @@ class Trainer:
 
     def get_criteria(self, loss_type):
         if loss_type == 'mse':
-            return nn.MSELoss()
+            return nn.MSELoss(reduction='sum')
         elif loss_type == 'bce':
-            return nn.BCEWithLogitsLoss()
+            return nn.BCEWithLogitsLoss(reduction='sum')
         elif loss_type == 'max-margin':
-            return nn.MarginRankingLoss()
+            return nn.MarginRankingLoss(reduction='sum')
         else:
             raise NotImplementedError
 
@@ -135,7 +137,7 @@ class Trainer:
                     item_attr_loss = 0.0
 
                 optimizer.zero_grad()
-                loss = 0.6 * user_item_loss + 0.2 * user_attr_loss + 0.2 * item_attr_loss
+                loss = user_item_loss + 0.5 * user_attr_loss + 0.5 * item_attr_loss
                 if torch.isnan(loss).any():
                     print('nan loss')
                     if self.wandb:
@@ -156,6 +158,12 @@ class Trainer:
             train_losses.append(train_loss)
 
             self.eval_metrices = self.evaluate()
+            if self.val_neg_df is not None:
+                mr_101, mrr_101, hr_101, ndcg_101 = self.evaluate_with_random_negatives()
+                self.eval_metrices['mr_101'] = mr_101
+                self.eval_metrices['mrr_101'] = mrr_101
+                self.eval_metrices['hr_101'] = hr_101
+                self.eval_metrices['ndcg_101'] = ndcg_101
             pprint.pprint(self.eval_metrices)
             print('epoch: {}, train loss: {}, test loss: {}'.format(epoch, train_loss, train_loss))
             if self.wandb:
@@ -173,7 +181,24 @@ class Trainer:
             mask[i, idx_mask] = False
             mask[i, item_list[i]] = True
         return mask
-
+    
+    def evaluate_with_random_negatives(self):
+        self.model.eval()
+        with torch.no_grad():
+            val_dict = self.val_neg_df.to_dict('list')
+            users = [int(x) for x in val_dict.keys()]
+            items = [x for x in val_dict.values()]
+            users = torch.tensor(users, device=self.device)
+            items = torch.tensor(items, device=self.device)
+            scores = self.model(users, items)
+            target_idx = torch.tensor(scores.shape[1] - 1)
+            pred_order = torch.argsort(scores, dim=-1, descending=True)
+            rank = torch.where(pred_order == target_idx)[1] + 1
+            mr_101 = sum(rank) / len(rank)
+            mrr_101 = sum(1.0 / rank) / len(rank)
+            hr_101 = sum(rank <= 10) / len(rank)
+            ndcg_101 = sum(1.0 / torch.log2(rank + 1)) / len(rank)
+        return mr_101.item(), mrr_101.item(), hr_101.item(), ndcg_101.item()
 
     def evaluate(self):
         self.model.eval()

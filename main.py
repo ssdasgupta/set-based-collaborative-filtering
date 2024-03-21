@@ -1,4 +1,5 @@
 import random
+import pandas as pd
 import numpy as np
 import torch
 
@@ -39,6 +40,9 @@ def main():
                         type=str, default='mf',
                         choices=['mf', 'mf_bias', 'box'],
                         help='model name')
+    parser.add_argument('--random_neg_eval',
+                        action='store_true',
+                        help='random negative evaluation')
     parser.add_argument('--embedding_dim',
                         type=int,
                         default=20,
@@ -134,6 +138,10 @@ def main():
     print('Building data loaders...')
     train_loader = dataset.get_loader()
     val_loader = dataset.get_val_loader()
+    if args.random_neg_eval:
+        val_neg_df = pd.read_csv(os.path.join(args.data_dir, 'val_101.csv'))
+    else:
+        val_neg_df = None
     print('Data loaders built')
 
 
@@ -165,6 +173,7 @@ def main():
         n_item_attrs=n_item_attrs,
         train_loader=train_loader,
         val_loader=val_loader,
+        val_neg_df=val_neg_df,
         gt_dict = gt_dict,
         loss_type=args.loss_type,
         optimizer_type=args.optimizer_type,
