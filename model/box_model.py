@@ -83,5 +83,5 @@ class BoxRecConditional(BoxRec):
         log_volume_items = item_boxes.log_soft_volume_adjusted(volume_temp=self.volume_temp,
                                                       intersection_temp=self.intersection_temp)
         conditional_prob = intersection_score - log_volume_items
-        assert (conditional_prob < 0).all(), "Log probability can not be positive"
+        assert (conditional_prob <= 0).all(), "Log probability can not be positive"
         return conditional_prob

@@ -17,8 +17,8 @@ def nll(pos, neg, **kwagrs):
 	Output:
 	    loss = - (pos + sum(log(1-exp(neg))) 
 	"""
-    assert (pos < 0).all(), "Log probabiltiy can not be positive"
-    assert (neg < 0).all(), "Log probabiltiy can not be positive"
+    assert (pos <= 0).all(), "Log probabiltiy can not be positive"
+    assert (neg <= 0).all(), "Log probabiltiy can not be positive"
     return -(pos + torch.mean(log1mexp(neg), dim=1)).sum()
 
 
