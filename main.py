@@ -1,6 +1,7 @@
 import random
 import pandas as pd
 import numpy as np
+import json
 import torch
 
 
@@ -8,7 +9,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data import TensorDataset
 
 from model import MatrixFactorization, MatrixFactorizationWithBias
-from model.box_model import BoxRec
+from model.box_model import BoxRec, BoxRecConditional
 from trainer import Trainer
 from data_loaders.data_processing import DataProcessing, MovieLensDataProcessing
 
@@ -30,7 +31,7 @@ def main():
     ## model related input parameters
     parser.add_argument('--model_dir',
                         type=str,
-                        default='model',
+                        default='checkpoints',
                         help='model directory path')
     parser.add_argument('--model_name',
                         type=str,
@@ -38,7 +39,7 @@ def main():
                         help='model name')
     parser.add_argument('--model',
                         type=str, default='mf',
-                        choices=['mf', 'mf_bias', 'box'],
+                        choices=['mf', 'mf_bias', 'box', 'box_conditional'],
                         help='model name')
     parser.add_argument('--random_neg_eval',
                         action='store_true',
@@ -97,7 +98,10 @@ def main():
     parser.add_argument('--verbose', action='store_true', help='verbose')
     args = parser.parse_args()
 
-    args.model_dir = os.path.join(args.model_dir, datetime.datetime.now().strftime('%Y%m%d%H%M%S'))
+    args.model_dir = os.path.join(args.model_dir,
+                                  args.model,
+                                  'dim_' + str(args.embedding_dim) + '-' + 'negs_' + str(args.n_negs),
+                                  datetime.datetime.now().strftime('%Y%m%d%H%M%S'))
     if args.seed is None:
         args.seed = random.randint(0, 2 ** 32)
     torch.manual_seed(args.seed)
@@ -161,6 +165,15 @@ def main():
                         box_type=args.box_type,
                         volume_temp=args.volume_temp,
                         intersection_temp=args.intersection_temp)
+    elif args.model == 'box_conditional':
+        model = BoxRecConditional(n_users=n_users + n_item_attrs,
+                        n_items=n_items + n_user_attrs,
+                        embedding_dim=args.embedding_dim,
+                        box_type=args.box_type,
+                        volume_temp=args.volume_temp,
+                        intersection_temp=args.intersection_temp)
+    else:
+        raise NotImplementedError
 
     model.to(device)
 
@@ -192,7 +205,14 @@ def main():
     if args.save_model:
         if args.verbose:
             print('Saving model...')
-        torch.save(model.state_dict(), os.path.join(args.model_dir, args.model_name))
+        if not os.path.exists(args.model_dir):
+            os.makedirs(args.model_dir)
+        # save args as json
+        args.num_users = n_users + n_item_attrs
+        args.num_items = n_items + n_user_attrs
+        with open(os.path.join(args.model_dir, 'args.json'), 'w') as f:
+            json.dump(vars(args), f)
+        torch.save(model.state_dict(), os.path.join(args.model_dir, 'final_' + args.model_name))
 
 
 if __name__ == '__main__':

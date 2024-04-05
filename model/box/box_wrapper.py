@@ -221,6 +221,11 @@ class BoxTensor(object):
                 dim=-1,
             )
         )
+    
+    def log_soft_volume_adjusted(
+        self, volume_temp: float = 1.0, intersection_temp: float = 1.0) -> Tensor:
+        res = self._log_soft_volume_adjusted(self.z, self.Z, volume_temp=volume_temp, intersection_temp=intersection_temp)
+        return res
 
     def intersection_log_soft_volume(
         self,

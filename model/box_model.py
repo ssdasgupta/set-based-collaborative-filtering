@@ -31,6 +31,39 @@ class BoxRec(MatrixFactorization):
         self.volume_temp = volume_temp
         self.intersection_temp = intersection_temp
 
+    def box_predict(self, combination_box):
+        all_items = torch.arange(self.n_items).to(device)
+        combination_box = combination_box.to(device)
+        item_boxes = self.item_embeddings(all_items)
+        if self.intersection_temp == 0.0:
+            scores = combination_box.intersection_log_soft_volume(
+                item_boxes, volume_temp=self.volume_temp
+            )
+        else:
+            scores = combination_box.gumbel_intersection_log_volume(
+                item_boxes,
+                volume_temp=self.volume_temp,
+                intersection_temp=self.intersection_temp,
+            )
+        return scores
+
+    def similarity_score(self, user_boxes, item_boxes):
+        if self.intersection_temp == 0.0:
+                score = user_boxes.intersection_log_soft_volume(
+                    item_boxes, 
+                    volume_temp=self.volume_temp,
+                    bayesian=False
+                )
+        else:
+            score = user_boxes.gumbel_intersection_log_volume(
+                item_boxes,
+                volume_temp=self.volume_temp,
+                intersection_temp=self.intersection_temp,
+            )
+        return score
+
+
+
     def forward(self, user, item):
         if len(user.shape) > len(item.shape):
             item = item.reshape(-1, 1)
@@ -39,54 +72,16 @@ class BoxRec(MatrixFactorization):
         user_boxes = self.user_embeddings(user)  # Batch_size * 2 * dim
         item_boxes = self.item_embeddings(item)  # Batch_size * ns+1 * 2 * dim
 
-        if self.intersection_temp == 0.0:
-            score = user_boxes.intersection_log_soft_volume(
-                item_boxes, 
-                volume_temp=self.volume_temp,
-                bayesian=False
-            )
-        else:
-            score = user_boxes.gumbel_intersection_log_volume(
-                item_boxes,
-                volume_temp=self.volume_temp,
-                intersection_temp=self.intersection_temp,
-            )
+        return self.similarity_score(user_boxes, item_boxes)
 
-        return score
+class BoxRecConditional(BoxRec):
+    def __init__(self, n_users, n_items, embedding_dim=20, box_type="BoxTensor", volume_temp=0.1, intersection_temp=0.1):
+        super().__init__(n_users, n_items, embedding_dim, box_type, volume_temp, intersection_temp)
 
-    # def word_similarity(self, w1, w2):
-    #     with torch.no_grad():
-    #         word1 = self.embeddings_word(w1)
-    #         word2 = self.embeddings_word(w2)
-    #         if self.intersection_temp == 0.0:
-    #             score = word1.intersection_log_soft_volume(word2, temp=self.volume_temp)
-    #         else:
-    #             score = word1.gumbel_intersection_log_volume(
-    #                 word2,
-    #                 volume_temp=self.volume_temp,
-    #                 intersection_temp=self.intersection_temp,
-    #             )
-    #         return score
-
-    # def conditional_similarity(self, w1, w2):
-    #     with torch.no_grad():
-    #         word1 = self.embeddings_word(w1)
-    #         word2 = self.embeddings_word(w2)
-    #         if self.intersection_temp == 0.0:
-    #             score = word1.intersection_log_soft_volume(word2, temp=self.volume_temp)
-    #         else:
-    #             score = word1.gumbel_intersection_log_volume(
-    #                 word2,
-    #                 volume_temp=self.volume_temp,
-    #                 intersection_temp=self.intersection_temp,
-    #             )
-    #         #  Word1 Word2  queen   royalty 5.93
-    #         # Word2 is more geenral P(royalty | queen) = 1
-    #         # Thus we need p(w2 | w1)
-    #         score -= word1._log_soft_volume_adjusted(
-    #             word1.z,
-    #             word1.Z,
-    #             temp=self.volume_temp,
-    #             gumbel_beta=self.intersection_temp,
-    #         )
-    #         return score
+    def similarity_score(self, user_boxes, item_boxes):
+        intersection_score = super().similarity_score(user_boxes, item_boxes)
+        log_volume_items = item_boxes.log_soft_volume_adjusted(volume_temp=self.volume_temp,
+                                                      intersection_temp=self.intersection_temp)
+        conditional_prob = intersection_score - log_volume_items
+        assert (conditional_prob < 0).all(), "Log probability can not be positive"
+        return conditional_prob

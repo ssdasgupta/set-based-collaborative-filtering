@@ -7,6 +7,7 @@ import pprint
 import wandb
 
 from eval_metrics import run_eval
+from loss import nll, nce, max_margin
 
 torch.autograd.set_detect_anomaly(True)
 
@@ -52,9 +53,11 @@ class Trainer:
         if loss_type == 'mse':
             return nn.MSELoss(reduction='sum')
         elif loss_type == 'bce':
-            return nn.BCEWithLogitsLoss(reduction='sum')
+            return nll
+        elif loss_type == 'bce_logits':
+            return nce
         elif loss_type == 'max-margin':
-            return nn.MarginRankingLoss(reduction='sum')
+            return max_margin
         else:
             raise NotImplementedError
 
@@ -101,25 +104,27 @@ class Trainer:
                 item = item_stream[tuple_type == 0]
                 user_neg = self.random_negative_sample(user, self.n_users, self.n_negs)
                 item_neg = self.random_negative_sample(item, self.n_items, self.n_negs)
-                pos_outputs = self.model(user, item).unsqueeze_(-1)
+                pos_outputs = self.model(user, item)
                 neg_outputs_item = self.model(user, item_neg)
                 neg_outputs_user = self.model(user_neg, item)
                 neg_outputs = torch.cat([neg_outputs_item, neg_outputs_user], dim=-1)
 
-                pred = torch.cat([pos_outputs, neg_outputs], dim=-1)
-                label = torch.cat([torch.ones_like(pos_outputs), torch.zeros_like(neg_outputs)], dim=-1)
-                user_item_loss = criterion['user_item'](pred, label)
+                # pred = torch.cat([pos_outputs, neg_outputs], dim=-1)
+                # label = torch.cat([torch.ones_like(pos_outputs), torch.zeros_like(neg_outputs)], dim=-1)
+                user_item_loss = criterion['user_item'](pos=pos_outputs,
+                                                        neg=neg_outputs)
 
                 if self.n_user_attrs > 0 and 1 in tuple_type:
                     # user-attr training
                     user_ua = user_stream[tuple_type == 1]
                     attr_ua = item_stream[tuple_type == 1]
                     user_attr_neg = self.random_negative_sample(attr_ua, self.n_user_attrs)
-                    pos_outputs_ua = self.model(user_ua, attr_ua + self.n_items).unsqueeze_(-1)
+                    pos_outputs_ua = self.model(user_ua, attr_ua + self.n_items)
                     neg_outputs_ua = self.model(user_ua, user_attr_neg + self.n_items)
-                    pred_ua = torch.cat([pos_outputs_ua, neg_outputs_ua], dim=-1)
-                    label_ua = torch.cat([torch.ones_like(pos_outputs_ua), torch.zeros_like(neg_outputs_ua)], dim=-1)
-                    user_attr_loss = criterion['user_attr'](pred_ua, label_ua)
+                    # pred_ua = torch.cat([pos_outputs_ua, neg_outputs_ua], dim=-1)
+                    # label_ua = torch.cat([torch.ones_like(pos_outputs_ua), torch.zeros_like(neg_outputs_ua)], dim=-1)
+                    user_attr_loss = criterion['user_attr'](pos=pos_outputs_ua,
+                                                            neg=neg_outputs_ua)
                 else:
                     user_attr_loss = 0.0
 
@@ -128,11 +133,12 @@ class Trainer:
                     attr = user_stream[tuple_type == 2]
                     item = item_stream[tuple_type == 2]
                     item_neg = self.random_negative_sample(item, self.n_items)
-                    pos_outputs = self.model(attr + self.n_users, item).unsqueeze_(-1)
-                    neg_outputs = self.model(attr + self.n_users, item_neg)
-                    pred = torch.cat([pos_outputs, neg_outputs], dim=-1)
-                    label = torch.cat([torch.ones_like(pos_outputs), torch.zeros_like(neg_outputs)], dim=-1)
-                    item_attr_loss = criterion['item_attr'](pred, label)
+                    pos_outputs_ia = self.model(attr + self.n_users, item)
+                    neg_outputs_ia = self.model(attr + self.n_users, item_neg)
+                    # pred = torch.cat([pos_outputs, neg_outputs], dim=-1)
+                    # label = torch.cat([torch.ones_like(pos_outputs), torch.zeros_like(neg_outputs)], dim=-1)
+                    item_attr_loss = criterion['item_attr'](pos=pos_outputs_ia,
+                                                            neg=neg_outputs_ia)
                 else:
                     item_attr_loss = 0.0
 
@@ -169,9 +175,6 @@ class Trainer:
             if self.wandb:
                 wandb.log(self.eval_metrices)
 
-        if not os.path.exists(self.model_dir):
-            os.makedirs(self.model_dir)
-        torch.save(self.model.state_dict(), os.path.join(self.model_dir, self.model_name))
         return train_losses, test_losses
     
     def get_mask(self, user_list, item_list):
@@ -191,6 +194,8 @@ class Trainer:
             users = torch.tensor(users, device=self.device)
             items = torch.tensor(items, device=self.device)
             scores = self.model(users, items)
+            if self.wandb:
+                wandb.log({'scores': scores})
             target_idx = torch.tensor(scores.shape[1] - 1)
             pred_order = torch.argsort(scores, dim=-1, descending=True)
             rank = torch.where(pred_order == target_idx)[1] + 1
