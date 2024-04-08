@@ -138,7 +138,7 @@ def main():
         n_item_attrs = 0
     else:
         raise NotImplementedError
-    
+
     print('Building data loaders...')
     train_loader = dataset.get_loader()
     val_loader = dataset.get_val_loader()
@@ -196,7 +196,7 @@ def main():
         model_name=args.model_name,
         wandb=args.wandb
     )
-    train_losses, test_losses = trainer.train(
+    train_losses, user_attr_loss, item_attr_loss, user_item_loss = trainer.train(
         epochs=args.n_epochs,
         lr=args.lr,
         wd=args.wd,

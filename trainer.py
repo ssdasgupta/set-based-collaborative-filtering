@@ -88,11 +88,16 @@ class Trainer:
             'item_attr': self.get_criteria(self.loss_type),
         }
         train_losses = []
-        test_losses = []
+        train_user_item_losses = []
+        train_item_attr_losses = []
+        train_user_attr_losses = []
         self.eval_metrices = self.evaluate()
         pprint.pprint(self.eval_metrices)
         for epoch in range(epochs):
             train_loss = 0.0
+            train_user_item_loss = 0.0
+            train_item_attr_loss = 0.0
+            train_user_attr_loss = 0.0
             self.model.train()
             for batch in tqdm(self.train_loader):
                 user_stream, item_stream, tuple_type = batch[0][:,0], batch[0][:,1], batch[0][:,2]
@@ -126,7 +131,7 @@ class Trainer:
                     user_attr_loss = criterion['user_attr'](pos=pos_outputs_ua,
                                                             neg=neg_outputs_ua)
                 else:
-                    user_attr_loss = 0.0
+                    user_attr_loss = torch.tensor([0.0])
 
                 if self.n_item_attrs > 0 and 2 in tuple_type:
                     # item-attr training
@@ -140,7 +145,7 @@ class Trainer:
                     item_attr_loss = criterion['item_attr'](pos=pos_outputs_ia,
                                                             neg=neg_outputs_ia)
                 else:
-                    item_attr_loss = 0.0
+                    item_attr_loss = torch.tensor([0.0])
 
                 optimizer.zero_grad()
                 loss = user_item_loss + 0.5 * user_attr_loss + 0.5 * item_attr_loss
@@ -154,14 +159,27 @@ class Trainer:
                     if self.wandb:
                         wandb.log({'inf_loss': loss.item()})
                     break
-                if self.wandb:
-                    wandb.log({'loss': loss.item()})
                 loss.backward()
                 optimizer.step()
                 train_loss += loss.item()
+                train_user_item_loss += user_item_loss.item()
+                train_item_attr_loss += item_attr_loss.item()
+                train_user_attr_loss += user_attr_loss.item()
 
             train_loss = train_loss / len(self.train_loader)
+            user_item_loss = train_user_item_loss / len(self.train_loader)
+            item_attr_loss = train_item_attr_loss / len(self.train_loader)
+            user_attr_loss = train_user_attr_loss / len(self.train_loader)
             train_losses.append(train_loss)
+            train_user_item_losses.append(user_item_loss)
+            train_item_attr_losses.append(item_attr_loss)
+            train_user_attr_losses.append(user_attr_loss)
+            if self.wandb:
+                wandb.log({'loss': loss.item(),
+                            'user_item_loss': user_item_loss,
+                            'item_attr_loss': item_attr_loss,
+                            'user_attr_loss': user_attr_loss}, 
+                            commit=False)
 
             self.eval_metrices = self.evaluate()
             if self.val_neg_df is not None:
@@ -171,11 +189,11 @@ class Trainer:
                 self.eval_metrices['hr_101'] = hr_101
                 self.eval_metrices['ndcg_101'] = ndcg_101
             pprint.pprint(self.eval_metrices)
-            print('epoch: {}, train loss: {}, test loss: {}'.format(epoch, train_loss, train_loss))
+            print('epoch: {}, train loss: {}, user_item_loss: {}, item_attr_loss: {}'.format(epoch, train_loss, user_item_loss, item_attr_loss))
             if self.wandb:
                 wandb.log(self.eval_metrices)
 
-        return train_losses, test_losses
+        return train_losses, train_user_attr_losses, train_item_attr_losses, train_user_item_losses
     
     def get_mask(self, user_list, item_list):
         mask = torch.ones((user_list.size(0), self.n_items), dtype=torch.bool, device=self.device)
@@ -194,8 +212,8 @@ class Trainer:
             users = torch.tensor(users, device=self.device)
             items = torch.tensor(items, device=self.device)
             scores = self.model(users, items)
-            if self.wandb:
-                wandb.log({'scores': scores})
+            # if self.wandb:
+            #     wandb.log({'scores': scores})
             target_idx = torch.tensor(scores.shape[1] - 1)
             pred_order = torch.argsort(scores, dim=-1, descending=True)
             rank = torch.where(pred_order == target_idx)[1] + 1
