@@ -131,7 +131,7 @@ class Trainer:
                     user_attr_loss = criterion['user_attr'](pos=pos_outputs_ua,
                                                             neg=neg_outputs_ua)
                 else:
-                    user_attr_loss = torch.tensor([0.0])
+                    user_attr_loss = torch.tensor([0.0], device=self.device)
 
                 if self.n_item_attrs > 0 and 2 in tuple_type:
                     # item-attr training
@@ -145,7 +145,7 @@ class Trainer:
                     item_attr_loss = criterion['item_attr'](pos=pos_outputs_ia,
                                                             neg=neg_outputs_ia)
                 else:
-                    item_attr_loss = torch.tensor([0.0])
+                    item_attr_loss = torch.tensor([0.0], device=self.device)
 
                 optimizer.zero_grad()
                 loss = user_item_loss + 0.5 * user_attr_loss + 0.5 * item_attr_loss
