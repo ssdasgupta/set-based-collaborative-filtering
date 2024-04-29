@@ -256,7 +256,7 @@ class Trainer:
         return mask
     
     def get_true_negatives(self, bin_matrix, n_negatives=100):
-        shuffled = torch.randperm(bin_matrix.shape[1])
+        shuffled = torch.randperm(bin_matrix.shape[1], device=self.device)
         bin_matrix_shuffled = bin_matrix[:, shuffled]
         indx = bin_matrix_shuffled.sort(dim=1).indices[:,:n_negatives]
         return shuffled[indx]
