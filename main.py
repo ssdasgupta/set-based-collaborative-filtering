@@ -1,23 +1,18 @@
 import random
-import pandas as pd
-import numpy as np
 import json
+import argparse
+import datetime
+import os
+import numpy as np
 import torch
-
-
-from torch.utils.data import DataLoader
-from torch.utils.data import TensorDataset
-
+import wandb
 from model import MatrixFactorization, MatrixFactorizationWithBias
 from model.box_model import BoxRec, BoxRecConditional
 from trainer import Trainer
-from data_loaders.data_processing import DataProcessing, MovieLensDataProcessing
-
-
-import argparse
-import datetime
-import wandb
-import os
+from data_loaders.data_processing import (
+    DataProcessing,
+    MovieLensDataProcessing, JointDataProcessing
+)
 
 torch.backends.cudnn.deterministic = True
 torch.backends.cudnn.benchmark = False
@@ -41,9 +36,9 @@ def main():
                         type=str, default='mf',
                         choices=['mf', 'mf_bias', 'box', 'box_conditional'],
                         help='model name')
-    parser.add_argument('--random_neg_eval',
+    parser.add_argument('--fixed_neg_eval',
                         action='store_true',
-                        help='random negative evaluation')
+                        help='fixed sampled negative evaluation')
     parser.add_argument('--embedding_dim',
                         type=int,
                         default=20,
@@ -62,14 +57,20 @@ def main():
                         help='intersection temperature')
 
     ## data related input parameters
-    parser.add_argument('--dataset',
+    parser.add_argument('--dataset_type',
                         type=str,
-                        default='synthetic',
+                        default='joint',
+                        choices=['synthetic', 'movielens', 'user-item', 'attribute-item', 'joint'],
                         help='model type')
     parser.add_argument('--data_dir',
                         type=str,
                         default='data/',
                         help='model type')
+    parser.add_argument('--dataset',
+                        type=str,
+                        default='user_genre_movie',
+                        choices= ['user_genre_movie', 'user_attribute_movie'],
+                        help='dataset')
     parser.add_argument('--user_attributes_data',
                         type=str, default=None,
                         help='user attributes data path')
@@ -84,10 +85,12 @@ def main():
     parser.add_argument('--loss_type',
                         type=str,
                         default='bce',
-                        choices=['bce', 'max-margin', 'mse'],
+                        choices=['bce', 'max-margin', 'mse', 'bce_logits'],
                         help='loss type')
     parser.add_argument('--optimizer_type', type=str, default='adam', help='optimizer type')
-    parser.add_argument('--n_negs', type=int, default=5, help='the number of negative samples')
+    parser.add_argument('--n_train_negs', type=int, default=5, help='the number of negative samples for training')
+    parser.add_argument('--n_test_negs', type=int, default=100, help='the number of negative samples for validation')
+    parser.add_argument('--attribute_loss_const', type=float, default=0.1, help='attribute loss constant')
     parser.add_argument('--lr', type=float, default=0.01, help='learning rate')
     parser.add_argument('--wd', type=float, default=0.0, help='weight decay')
 
@@ -100,62 +103,65 @@ def main():
 
     args.model_dir = os.path.join(args.model_dir,
                                   args.model,
-                                  'dim_' + str(args.embedding_dim) + '-' + 'negs_' + str(args.n_negs),
+                                  'dim_' + str(args.embedding_dim) + '-' + 'negs_' + str(args.n_train_negs),
                                   datetime.datetime.now().strftime('%Y%m%d%H%M%S'))
+    args.data_dir = os.path.join(args.data_dir, args.dataset)
+
     if args.seed is None:
         args.seed = random.randint(0, 2 ** 32)
     torch.manual_seed(args.seed)
     random.seed(args.seed)
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
-    
+
     if args.wandb:
         run = wandb.init(project="box-rec-sys", reinit=True)
         wandb.config.update(args)
-    
-    if args.dataset == 'synthetic':
-        dataset = DataProcessing(args.data_dir, args.batch_size)
-    elif args.dataset == 'movielens' or args.dataset == 'movielens-genre':
-        dataset = MovieLensDataProcessing(data_dir=args.data_dir,
-                                          dataset_type=args.dataset,
-                                          batch_size=args.batch_size)
-        print('Loading ground truth...')
-        gt_dict = dataset.get_gt_dict(dataset.gt_df)
-        print('Ground truth loaded')
-    else:
-        raise NotImplementedError
 
-    n_users = len(dataset.user2id)
-    n_items = len(dataset.item2id)
-    if args.dataset == 'synthetic':
+    if args.dataset_type == 'synthetic':
+        dataset = DataProcessing(args.data_dir, args.batch_size)
+        n_users = len(dataset.user2id)
+        n_items = len(dataset.item2id)
         n_user_attrs = len(dataset.user_attribute2id)
         n_item_attrs = len(dataset.item_attribute2id)
-    elif args.dataset == 'movielens-genre':
-        n_user_attrs = 0
-        n_item_attrs = len(dataset.item_attribute2id)
-    elif args.dataset == 'movielens':
+    elif args.dataset_type == 'movielens':
+        dataset = MovieLensDataProcessing(data_dir=args.data_dir,
+                                          dataset_type=args.dataset_type,
+                                          batch_size=args.batch_size)
+        print('Loading ground truth...')
+        print('Ground truth loaded')
+        n_users = len(dataset.user2id)
+        n_items = len(dataset.item2id)
         n_user_attrs = 0
         n_item_attrs = 0
+
+    elif args.dataset_type == 'joint' or args.dataset_type == 'attribute-item' or args.dataset_type == 'joint':
+        dataset = JointDataProcessing(data_dir=args.data_dir,
+                                        dataset_type=args.dataset_type,
+                                        batch_size=args.batch_size)
+        n_users = dataset.n_users
+        n_items = dataset.n_movies
+        n_user_attrs = 0
+        n_item_attrs = dataset.n_attributes
+
     else:
         raise NotImplementedError
 
     print('Building data loaders...')
     train_loader = dataset.get_loader()
     val_loader = dataset.get_val_loader()
-    if args.random_neg_eval:
-        val_neg_df = pd.read_csv(os.path.join(args.data_dir, 'val_101.csv'))
-    else:
-        val_neg_df = None
+    if args.fixed_neg_eval:
+        dataset.read_neg_data_files()
     print('Data loaders built')
 
 
     print('Building model... ')
     if args.model == 'mf':
-        model = MatrixFactorization(n_users= n_users + n_item_attrs,
+        model = MatrixFactorization(n_users=n_users + n_item_attrs,
                                     n_items=n_items + n_user_attrs,
                                     embedding_dim=args.embedding_dim)
     elif args.model == 'mf_bias':
-        model = MatrixFactorizationWithBias(n_users= n_users + n_item_attrs,
+        model = MatrixFactorizationWithBias(n_users=n_users + n_item_attrs,
                                             n_items=n_items + n_user_attrs,
                                             embedding_dim=args.embedding_dim)
     elif args.model == 'box':
@@ -186,17 +192,19 @@ def main():
         n_item_attrs=n_item_attrs,
         train_loader=train_loader,
         val_loader=val_loader,
-        val_neg_df=val_neg_df,
-        gt_dict = gt_dict,
+        fixed_neg_eval=args.fixed_neg_eval,
+        dataset=dataset,
         loss_type=args.loss_type,
         optimizer_type=args.optimizer_type,
-        n_negs=args.n_negs,
+        n_train_negs=args.n_train_negs,
+        n_test_negs=args.n_test_negs,
+        attribute_loss_const=args.attribute_loss_const,
         device=device,
         model_dir=args.model_dir,
         model_name=args.model_name,
         wandb=args.wandb
     )
-    train_losses, user_attr_loss, item_attr_loss, user_item_loss = trainer.train(
+    trainer.train(
         epochs=args.n_epochs,
         lr=args.lr,
         wd=args.wd,
@@ -210,7 +218,7 @@ def main():
         # save args as json
         args.num_users = n_users + n_item_attrs
         args.num_items = n_items + n_user_attrs
-        with open(os.path.join(args.model_dir, 'args.json'), 'w') as f:
+        with open(os.path.join(args.model_dir, 'args.json'), 'w', encoding='utf-8') as f:
             json.dump(vars(args), f)
         torch.save(model.state_dict(), os.path.join(args.model_dir, 'final_' + args.model_name))
 

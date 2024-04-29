@@ -1,1 +1,1 @@
-from .data_processing import DataProcessing, MovieLensDataProcessing
+from .data_processing import DataProcessing, MovieLensDataProcessing, JointDataProcessing
