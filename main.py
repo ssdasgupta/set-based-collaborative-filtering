@@ -1,3 +1,4 @@
+"""Main script to run the training process."""
 import random
 import json
 import argparse
@@ -20,6 +21,7 @@ torch.backends.cudnn.benchmark = False
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def main():
+    """Main function to parse arguments and run the training process."""
     print('Parsing arguments...')
     parser = argparse.ArgumentParser()
 
@@ -202,7 +204,7 @@ def main():
         device=device,
         model_dir=args.model_dir,
         model_name=args.model_name,
-        wandb=args.wandb
+        use_wandb=args.wandb
     )
     trainer.train(
         epochs=args.n_epochs,
