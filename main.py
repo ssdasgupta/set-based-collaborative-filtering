@@ -202,7 +202,6 @@ def main():
         n_test_negs=args.n_test_negs,
         attribute_loss_const=args.attribute_loss_const,
         device=device,
-        model_dir=args.model_dir,
         model_name=args.model_name,
         use_wandb=args.wandb
     )

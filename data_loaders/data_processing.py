@@ -211,7 +211,6 @@ class JointDataProcessing(MovieLensDataProcessing):
         self.n_attributes = len(self.attributes)
         print('ID files read successfully...')
 
-    
     def load_data(self, user_movie_data, attribute_movie_data):
         user = user_movie_data['user_id'].values
         movie = user_movie_data['movie_id'].values
@@ -222,16 +221,16 @@ class JointDataProcessing(MovieLensDataProcessing):
         data_tuples += tag_tuples
         dataset = TensorDataset(torch.LongTensor(data_tuples).to(device))
         return TensorDataLoader(dataset=dataset, batch_size=self.batch_size, shuffle=True)
-    
+
     def get_loader(self):
         return self.load_data(self.train_user_movie, self.train_attribute_movie)
-    
+
     def get_val_loader(self):
         return self.load_data(self.val_user_movie, self.val_attribute_movie)
-    
+
     def get_test_loader(self):
         return self.load_data(self.test_user_movie, self.test_attribute_movie)
-    
+
     def get_gt_dict(self, df, field_1='user_id', field_2='movie_id'):
         gt_dict = {}
         for userId, itemId in zip(df[field_1].values, df[field_2].values):
@@ -239,7 +238,3 @@ class JointDataProcessing(MovieLensDataProcessing):
                 gt_dict[userId] = []
             gt_dict[userId].append(itemId)
         return gt_dict
-    
-        
-
-

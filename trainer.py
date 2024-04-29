@@ -29,7 +29,6 @@ class Trainer:
             n_test_negs = 100,
             attribute_loss_const = 1.0,
             device = 'cpu',
-            model_dir = None,
             model_name = 'mf_bias',
             use_wandb = False
     ):
@@ -42,7 +41,6 @@ class Trainer:
         self.val_loader = val_loader
         self.fixed_neg_eval = fixed_neg_eval
         self.device = device
-        self.model_dir = model_dir
         self.model_name = model_name
         self.n_train_negs = n_train_negs
         self.n_test_negs = n_test_negs
@@ -116,8 +114,6 @@ class Trainer:
         neg_outputs_user = self.model(user_neg, item)
         neg_outputs = torch.cat([neg_outputs_item, neg_outputs_user], dim=-1)
 
-        # pred = torch.cat([pos_outputs, neg_outputs], dim=-1)
-        # label = torch.cat([torch.ones_like(pos_outputs), torch.zeros_like(neg_outputs)], dim=-1)
         user_item_loss = self.criterion['user_item'](pos=pos_outputs,
                                                 neg=neg_outputs)
 
@@ -128,8 +124,7 @@ class Trainer:
             user_attr_neg = self.random_negative_sample(attr_ua, self.n_user_attrs, n_negs)
             pos_outputs_ua = self.model(user_ua, attr_ua + self.n_items)
             neg_outputs_ua = self.model(user_ua, user_attr_neg + self.n_items)
-            # pred_ua = torch.cat([pos_outputs_ua, neg_outputs_ua], dim=-1)
-            # label_ua = torch.cat([torch.ones_like(pos_outputs_ua), torch.zeros_like(neg_outputs_ua)], dim=-1)
+
             user_attr_loss = self.criterion['user_attr'](pos=pos_outputs_ua,
                                                     neg=neg_outputs_ua)
         else:
@@ -211,10 +206,11 @@ class Trainer:
                 wandb.log({'loss': loss.item(),
                             'user_item_loss': user_item_loss,
                             'item_attr_loss': item_attr_loss,
-                            'user_attr_loss': user_attr_loss}, 
+                            'user_attr_loss': user_attr_loss},
                             commit=False)
 
             self.eval_metrices = self.evaluate()
+            self.eval_metrices.update({'epoch': epoch})
             pprint.pprint(self.eval_metrices)
 
             print('epoch: {}, train loss: {}, user_item_loss: {}, item_attr_loss: {}'.format(epoch, train_loss, user_item_loss, item_attr_loss))
