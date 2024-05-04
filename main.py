@@ -4,6 +4,7 @@ import json
 import argparse
 import datetime
 import os
+import shutil
 import numpy as np
 import torch
 import wandb
@@ -32,7 +33,7 @@ def main():
                         help='model directory path')
     parser.add_argument('--model_name',
                         type=str,
-                        default='model.pth',
+                        default='model',
                         help='model name')
     parser.add_argument('--model',
                         type=str, default='mf',
@@ -105,8 +106,9 @@ def main():
 
     args.model_dir = os.path.join(args.model_dir,
                                   args.model,
-                                  'dim_' + str(args.embedding_dim) + '-' + 'negs_' + str(args.n_train_negs),
-                                  datetime.datetime.now().strftime('%Y%m%d%H%M%S'))
+                                  args.dataset,
+                                  'dim_' + str(args.embedding_dim) + '-' + 'negs_' + str(args.n_train_negs)
+                )
     args.data_dir = os.path.join(args.data_dir, args.dataset)
 
     if args.seed is None:
@@ -184,6 +186,18 @@ def main():
         raise NotImplementedError
 
     model.to(device)
+    
+    if args.save_model:
+        if args.verbose:
+            print('Saving model...')
+        if os.path.exists(args.model_dir):
+            shutil.rmtree(args.model_dir) # [[[Be very very careful in using this, always think twice before changing anything in model saving mechanism.]]]
+        os.makedirs(args.model_dir)
+        # save args as json
+        args.num_users = n_users + n_item_attrs
+        args.num_items = n_items + n_user_attrs
+        with open(os.path.join(args.model_dir, 'args.json'), 'w', encoding='utf-8') as f:
+            json.dump(vars(args), f)
 
     print('Training model...')
     trainer = Trainer(
@@ -203,25 +217,15 @@ def main():
         attribute_loss_const=args.attribute_loss_const,
         device=device,
         model_name=args.model_name,
-        use_wandb=args.wandb
+        use_wandb=args.wandb,
+        model_dir=args.model_dir,
+        save_model=args.save_model,
     )
     trainer.train(
         epochs=args.n_epochs,
         lr=args.lr,
         wd=args.wd,
     )
-
-    if args.save_model:
-        if args.verbose:
-            print('Saving model...')
-        if not os.path.exists(args.model_dir):
-            os.makedirs(args.model_dir)
-        # save args as json
-        args.num_users = n_users + n_item_attrs
-        args.num_items = n_items + n_user_attrs
-        with open(os.path.join(args.model_dir, 'args.json'), 'w', encoding='utf-8') as f:
-            json.dump(vars(args), f)
-        torch.save(model.state_dict(), os.path.join(args.model_dir, 'final_' + args.model_name))
 
 
 if __name__ == '__main__':

@@ -30,7 +30,9 @@ class Trainer:
             attribute_loss_const = 1.0,
             device = 'cpu',
             model_name = 'mf_bias',
-            use_wandb = False
+            use_wandb = False,
+            model_dir = 'models',
+            save_model = False,
     ):
         self.model = model
         self.n_users = n_users
@@ -48,6 +50,9 @@ class Trainer:
         self.loss_type = loss_type
         self.optimizer_type = optimizer_type
         self.use_wandb = use_wandb
+        self.model_dir = model_dir
+        self.save_model = save_model
+
         self.dataset = dataset
         if dataset.dataset_type == 'joint':
             self.gt_user_movie_matrix = self.gt_df_to_matrix(dataset.gt_user_movie)
@@ -60,6 +65,10 @@ class Trainer:
             'item_attr': self.get_criteria(self.loss_type),
         }
         self.eval_metrices = None
+        self.best_hr = 0.0
+        self.best_ndcg = 0.0
+        self.best_hr_attr = 0.0
+        self.best_ndcg_attr = 0.0
 
     def gt_df_to_matrix(self, gt_df):
         columns = gt_df.columns
@@ -151,6 +160,7 @@ class Trainer:
         eval_metrices.update(self.evaluate_rank_with_true_negatives())
         if self.fixed_neg_eval:
             eval_metrices.update(self.evaluate_with_fixed_negatives())
+        
         return eval_metrices
 
     def handle_nan_inf(self, loss):
@@ -163,6 +173,35 @@ class Trainer:
             if self.use_wandb:
                 wandb.log({'inf_loss': loss.item()})
             raise ValueError('inf loss')
+        
+    def save_model_state(self, name):
+        torch.save(self.model.state_dict(), os.path.join(self.model_dir, self.model_name + '_' + name + '.pth'))
+    
+    def get_best_score(self, eval_metrices):
+        if eval_metrices['hr_101_fixed_neg'] > self.best_hr:
+            self.best_hr = eval_metrices['hr_101_fixed_neg']
+            if self.save_model:
+                self.save_model_state('best_hr')
+        if eval_metrices['ndcg_101_fixed_neg'] > self.best_ndcg:
+            self.best_ndcg = eval_metrices['ndcg_101_fixed_neg']
+            if self.save_model:
+                self.save_model_state('best_ndcg')
+        if eval_metrices['hr_101_attr_fixed_neg'] > self.best_hr_attr:
+            self.best_hr_attr = eval_metrices['hr_101_attr_fixed_neg']
+            if self.save_model:
+                self.save_model_state('best_hr_attr')
+        if eval_metrices['ndcg_101_attr_fixed_neg'] > self.best_ndcg_attr:
+            self.best_ndcg_attr = eval_metrices['ndcg_101_attr_fixed_neg']
+            if self.save_model:
+                self.save_model_state('best_ndcg_attr')
+        
+        eval_metrices.update({
+            'best_hr': self.best_hr,
+            'best_ndcg': self.best_ndcg,
+            'best_hr_attr': self.best_hr_attr,
+            'best_ndcg_attr': self.best_ndcg_attr
+        })
+        return eval_metrices      
 
     def train(self, epochs, lr, wd):
         self.model.to(self.device)
@@ -173,6 +212,9 @@ class Trainer:
         train_user_attr_losses = []
         self.eval_metrices = self.evaluate()
         pprint.pprint(self.eval_metrices)
+        self.eval_metrices.update({'epoch': 0})
+        if self.use_wandb:
+            wandb.log(self.eval_metrices)
         for epoch in range(epochs):
             train_loss = 0.0
             train_user_item_loss = 0.0
@@ -183,7 +225,7 @@ class Trainer:
                 user_item_loss, user_attr_loss, item_attr_loss = self.run_single_batch(batch, 
                                                                                    n_negs=self.n_train_negs)
                 optimizer.zero_grad()
-                loss = user_item_loss + self.attribute_loss_const * (user_attr_loss + item_attr_loss)
+                loss =  (1 - self.attribute_loss_const) * user_item_loss + self.attribute_loss_const * (user_attr_loss + item_attr_loss)
                 self.handle_nan_inf(loss)
                 loss.backward()
                 optimizer.step()
@@ -210,12 +252,12 @@ class Trainer:
                             commit=False)
 
             self.eval_metrices = self.evaluate()
-            self.eval_metrices.update({'epoch': epoch})
+            self.eval_metrices.update({'epoch': epoch + 1})
+            self.eval_metrices = self.get_best_score(self.eval_metrices)
             pprint.pprint(self.eval_metrices)
-
-            print('epoch: {}, train loss: {}, user_item_loss: {}, item_attr_loss: {}'.format(epoch, train_loss, user_item_loss, item_attr_loss))
             if self.use_wandb:
                 wandb.log(self.eval_metrices)
+            print('epoch: {}, train loss: {}, user_item_loss: {}, item_attr_loss: {}'.format(epoch + 1, train_loss, user_item_loss, item_attr_loss))
 
         return train_losses, train_user_attr_losses, train_item_attr_losses, train_user_item_losses
 
@@ -227,7 +269,7 @@ class Trainer:
             for batch in tqdm(self.val_loader):
                 user_item_loss, user_attr_loss, item_attr_loss = self.run_single_batch(batch,
                                                                             n_negs=self.n_test_negs)
-                loss = user_item_loss + self.attribute_loss_const * (user_attr_loss + item_attr_loss)
+                loss = (1 - self.attribute_loss_const) * user_item_loss + self.attribute_loss_const * (user_attr_loss + item_attr_loss)
                 test_user_item_loss += user_item_loss.item()
                 test_user_attr_loss += user_attr_loss.item()
                 test_item_attr_loss += item_attr_loss.item()
@@ -237,8 +279,8 @@ class Trainer:
     
             eval_metrices = {
                 'loss': loss.item(),
-                'user_item_loss': test_user_item_loss,
-                'item_attr_loss': test_item_attr_loss
+                'valid_user_item_loss': test_user_item_loss,
+                'valid_item_attr_loss': test_item_attr_loss
             }
         return eval_metrices
 
@@ -277,6 +319,7 @@ class Trainer:
             all_negative_movies = self.get_true_negatives(self.gt_user_movie_matrix, n_negatives=100)
             assert self.gt_user_movie_matrix.gather(1, all_negative_movies).sum() == 0
             negative_movies = all_negative_movies[user]
+
             all_movies = torch.cat([negative_movies, movie.reshape(-1,1)], dim=-1)
             scores = self.model(user, all_movies)
             hr_101, ndcg_101 = self.get_hr_ndcg_101(scores)
@@ -290,9 +333,11 @@ class Trainer:
             all_negative_movies = self.get_true_negatives(self.gt_attribute_movie_matrix, n_negatives=100)
             assert self.gt_attribute_movie_matrix.gather(1, all_negative_movies).sum() == 0
             negative_movies = all_negative_movies[attribute]
-            all_movies = torch.cat([negative_movies, movie.reshape(-1,1)], dim=-1)
 
-            scores = self.model(attribute, all_movies)
+            all_movies = torch.cat([negative_movies, movie.reshape(-1,1)], dim=-1)
+            assert self.gt_attribute_movie_matrix[attribute, movie].all()
+
+            scores = self.model(attribute + self.n_users, all_movies)
             hr_101_attr, ndcg_101_attr = self.get_hr_ndcg_101(scores)
 
             return {'hr_101': hr_101,
@@ -316,7 +361,7 @@ class Trainer:
             items = [x for x in val_attribute_movie_dict.values()]
             attributes = torch.tensor(attributes, device=self.device)
             items = torch.tensor(items, device=self.device)
-            scores = self.model(attributes, items)
+            scores = self.model(attributes + self.n_users, items)
             hr_101_attr, ndcg_101_attr = self.get_hr_ndcg_101(scores)
 
             return {
