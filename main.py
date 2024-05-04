@@ -40,7 +40,7 @@ def main():
                         choices=['mf', 'mf_bias', 'box', 'box_conditional'],
                         help='model name')
     parser.add_argument('--fixed_neg_eval',
-                        action='store_true',
+                        action='store_false',
                         help='fixed sampled negative evaluation')
     parser.add_argument('--embedding_dim',
                         type=int,
