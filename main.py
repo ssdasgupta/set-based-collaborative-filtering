@@ -13,7 +13,9 @@ from model.box_model import BoxRec, BoxRecConditional
 from trainer import Trainer
 from data_loaders.data_processing import (
     DataProcessing,
-    MovieLensDataProcessing, JointDataProcessing
+    MovieLensDataProcessing, 
+    JointDataProcessing,
+    JointDataProcessingWithAttributesLeaked
 )
 
 torch.backends.cudnn.deterministic = True
@@ -63,7 +65,7 @@ def main():
     parser.add_argument('--dataset_type',
                         type=str,
                         default='joint',
-                        choices=['synthetic', 'movielens', 'user-item', 'attribute-item', 'joint'],
+                        choices=['synthetic', 'movielens', 'user-item', 'attribute-item', 'joint', 'joint-attribute'],
                         help='model type')
     parser.add_argument('--data_dir',
                         type=str,
@@ -147,7 +149,14 @@ def main():
         n_items = dataset.n_movies
         n_user_attrs = 0
         n_item_attrs = dataset.n_attributes
-
+    elif args.dataset_type == 'joint-attribute':
+        dataset = JointDataProcessingWithAttributesLeaked(data_dir=args.data_dir,
+                                        dataset_type=args.dataset_type,
+                                        batch_size=args.batch_size)
+        n_users = dataset.n_users
+        n_items = dataset.n_movies
+        n_user_attrs = 0
+        n_item_attrs = dataset.n_attributes
     else:
         raise NotImplementedError
 

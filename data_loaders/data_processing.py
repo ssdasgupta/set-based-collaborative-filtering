@@ -238,3 +238,44 @@ class JointDataProcessing(MovieLensDataProcessing):
                 gt_dict[userId] = []
             gt_dict[userId].append(itemId)
         return gt_dict
+
+
+class JointDataProcessingWithAttributesLeaked(JointDataProcessing):
+    def read_data_files(self):
+        self.train_user_movie = pd.read_csv(self.user_movie_path + 'train.csv')
+        self.val_user_movie = pd.read_csv(self.user_movie_path + 'valid.csv')
+        self.test_user_movie = pd.read_csv(self.user_movie_path + 'test.csv')
+        self.gt_user_movie = pd.read_csv(self.user_movie_path + 'gt.csv')
+
+        self.train_attribute_movie = pd.read_csv(self.attribute_movie_path + 'gt.csv')
+        self.val_attribute_movie = pd.read_csv(self.attribute_movie_path + 'valid.csv')
+        self.test_attribute_movie = pd.read_csv(self.attribute_movie_path + 'test.csv')
+        self.gt_attribute_movie = pd.read_csv(self.attribute_movie_path + 'gt.csv')
+        print('Data files read successfully...')
+
+
+class JointDataProcessingWithUsersLeaked(JointDataProcessing):
+    def read_data_files(self):
+        self.train_user_movie = pd.read_csv(self.user_movie_path + 'gt.csv')
+        self.val_user_movie = pd.read_csv(self.user_movie_path + 'valid.csv')
+        self.test_user_movie = pd.read_csv(self.user_movie_path + 'test.csv')
+        self.gt_user_movie = pd.read_csv(self.user_movie_path + 'gt.csv')
+
+        self.train_attribute_movie = pd.read_csv(self.attribute_movie_path + 'train.csv')
+        self.val_attribute_movie = pd.read_csv(self.attribute_movie_path + 'valid.csv')
+        self.test_attribute_movie = pd.read_csv(self.attribute_movie_path + 'test.csv')
+        self.gt_attribute_movie = pd.read_csv(self.attribute_movie_path + 'gt.csv')
+        print('Data files read successfully...')
+    
+class JointDataProcessingWithAllLeaked(JointDataProcessing):
+    def read_data_files(self):
+        self.train_user_movie = pd.read_csv(self.user_movie_path + 'gt.csv')
+        self.val_user_movie = pd.read_csv(self.user_movie_path + 'valid.csv')
+        self.test_user_movie = pd.read_csv(self.user_movie_path + 'test.csv')
+        self.gt_user_movie = pd.read_csv(self.user_movie_path + 'gt.csv')
+
+        self.train_attribute_movie = pd.read_csv(self.attribute_movie_path + 'gt.csv')
+        self.val_attribute_movie = pd.read_csv(self.attribute_movie_path + 'valid.csv')
+        self.test_attribute_movie = pd.read_csv(self.attribute_movie_path + 'test.csv')
+        self.gt_attribute_movie = pd.read_csv(self.attribute_movie_path + 'gt.csv')
+        print('Data files read successfully...')

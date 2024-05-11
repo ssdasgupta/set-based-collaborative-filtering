@@ -54,7 +54,7 @@ class Trainer:
         self.save_model = save_model
 
         self.dataset = dataset
-        if dataset.dataset_type == 'joint':
+        if dataset.dataset_type == 'joint' or dataset.dataset_type == 'joint-attribute':
             self.gt_user_movie_matrix = self.gt_df_to_matrix(dataset.gt_user_movie)
             self.gt_attribute_movie_matrix = self.gt_df_to_matrix(dataset.gt_attribute_movie)
 
