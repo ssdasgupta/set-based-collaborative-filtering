@@ -355,7 +355,12 @@ class Trainer:
             items = [x for x in val_user_movie_dict.values()]
             users = torch.tensor(users, device=self.device)
             items = torch.tensor(items, device=self.device)
-            scores = self.model(users, items)
+            total_valid  = torch.arange(len(users))
+            chunks = torch.chunk(total_valid, 10)
+            scores = torch.empty((0, items.shape[-1]), device=self.device)
+            for chunk in chunks:
+                score_chunk = self.model(users[chunk], items[chunk])
+                scores = torch.cat((scores, score_chunk), dim=0)
             hr_101, ndcg_101 = self.get_hr_ndcg_101(scores)
 
             val_attribute_movie_dict = self.dataset.val_neg_attribute_movie.to_dict('list')
