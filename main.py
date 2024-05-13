@@ -137,7 +137,8 @@ def main():
     elif args.dataset_type == 'movielens':
         dataset = MovieLensDataProcessing(data_dir=args.data_dir,
                                           dataset_type=args.dataset_type,
-                                          batch_size=args.batch_size)
+                                          batch_size=args.batch_size,
+                                          eval_batch_size=args.eval_batch_size)
         print('Loading ground truth...')
         print('Ground truth loaded')
         n_users = len(dataset.user2id)
@@ -148,7 +149,8 @@ def main():
     elif args.dataset_type == 'joint' or args.dataset_type == 'attribute-item' or args.dataset_type == 'joint':
         dataset = JointDataProcessing(data_dir=args.data_dir,
                                         dataset_type=args.dataset_type,
-                                        batch_size=args.batch_size)
+                                        batch_size=args.batch_size,
+                                        eval_batch_size=args.eval_batch_size)
         n_users = dataset.n_users
         n_items = dataset.n_movies
         n_user_attrs = 0
@@ -156,7 +158,8 @@ def main():
     elif args.dataset_type == 'joint-attribute':
         dataset = JointDataProcessingWithAttributesLeaked(data_dir=args.data_dir,
                                         dataset_type=args.dataset_type,
-                                        batch_size=args.batch_size)
+                                        batch_size=args.batch_size,
+                                        eval_batch_size=args.eval_batch_size)
         n_users = dataset.n_users
         n_items = dataset.n_movies
         n_user_attrs = 0
@@ -167,6 +170,7 @@ def main():
     print('Building data loaders...')
     train_loader = dataset.get_loader()
     val_loader = dataset.get_val_loader()
+
     if args.eval_type == 'fixed_neg_eval':
         dataset.read_neg_data_files()
     print('Data loaders built')
