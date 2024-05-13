@@ -173,13 +173,14 @@ class MovieLensDataProcessing:
 
 
 class JointDataProcessing(MovieLensDataProcessing):
-    def __init__(self, data_dir, dataset_type='movielens', batch_size=128):
+    def __init__(self, data_dir, dataset_type='movielens', batch_size=128, eval_batch_size=128):
         self.data_dir = data_dir
         self.user_movie_path = os.path.join(self.data_dir, 'user_movie/')
         self.attribute_movie_path = os.path.join(self.data_dir, 'attribute_movie/')
         self.vocab_path = os.path.join(self.data_dir, 'vocab/')
         self.dataset_type = dataset_type
         self.batch_size = batch_size
+        self.eval_batch_size = eval_batch_size
         self.read_data_files()
         self.read_id_files()
 
@@ -211,7 +212,7 @@ class JointDataProcessing(MovieLensDataProcessing):
         self.n_attributes = len(self.attributes)
         print('ID files read successfully...')
 
-    def load_data(self, user_movie_data, attribute_movie_data):
+    def load_data(self, user_movie_data, attribute_movie_data, batch_size):
         user = user_movie_data['user_id'].values
         movie = user_movie_data['movie_id'].values
         data_tuples = list(zip(user,  movie, [which_matrix['user-movie']] * len(movie)))
@@ -220,18 +221,22 @@ class JointDataProcessing(MovieLensDataProcessing):
         tag_tuples = list(zip(attribute, movie, [which_matrix['attr-movie']] * len(movie)))
         data_tuples += tag_tuples
         dataset = TensorDataset(torch.LongTensor(data_tuples).to(device))
-        return TensorDataLoader(dataset=dataset, batch_size=self.batch_size, shuffle=True)
+        return TensorDataLoader(dataset=dataset, batch_size=batch_size, shuffle=True)
 
     def get_loader(self):
-        return self.load_data(self.train_user_movie, self.train_attribute_movie)
+        return self.load_data(self.train_user_movie, self.train_attribute_movie, self.batch_size)
 
     def get_val_loader(self):
-        return self.load_data(self.val_user_movie, self.val_attribute_movie)
+        return self.load_data(self.val_user_movie, self.val_attribute_movie, self.eval_batch_size)
 
     def get_test_loader(self):
-        return self.load_data(self.test_user_movie, self.test_attribute_movie)
+        return self.load_data(self.test_user_movie, self.test_attribute_movie, self.eval_batch_size)
+    
+    def get_gt_dict(self):
+        self.gt_user_movie_dict = self.df2dict(self.gt_user_movie, field_1='user_id', field_2='movie_id')
+        self.gt_attribute_movie_dict = self.df2dict(self.gt_attribute_movie, field_1='attribute_id', field_2='movie_id')
 
-    def get_gt_dict(self, df, field_1='user_id', field_2='movie_id'):
+    def df2dict(self, df, field_1='user_id', field_2='movie_id'):
         gt_dict = {}
         for userId, itemId in zip(df[field_1].values, df[field_2].values):
             if userId not in gt_dict:

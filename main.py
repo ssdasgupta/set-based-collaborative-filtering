@@ -41,9 +41,11 @@ def main():
                         type=str, default='mf',
                         choices=['mf', 'mf_bias', 'box', 'box_conditional'],
                         help='model name')
-    parser.add_argument('--fixed_neg_eval',
-                        action='store_false',
-                        help='fixed sampled negative evaluation')
+    parser.add_argument('--eval_type',
+                        type=str,
+                        default='fixed_neg_eval',
+                        choices=['fixed_neg_eval', 'full_eval'],
+                        help='evaluation type')
     parser.add_argument('--embedding_dim',
                         type=int,
                         default=20,
@@ -87,6 +89,7 @@ def main():
     ## training related input parameters
     parser.add_argument('--n_epochs', type=int, default=10, help='the number of epochs')
     parser.add_argument('--batch_size', type=int, default=1024, help='batch size')
+    parser.add_argument('--eval_batch_size', type=int, default=128, help='evaluation batch size')
     parser.add_argument('--loss_type',
                         type=str,
                         default='bce',
@@ -109,6 +112,7 @@ def main():
     args.model_dir = os.path.join(args.model_dir,
                                   args.model,
                                   args.dataset,
+                                  args.dataset_type,
                                   'dim_' + str(args.embedding_dim) + '-' + 'negs_' + str(args.n_train_negs)
                 )
     args.data_dir = os.path.join(args.data_dir, args.dataset)
@@ -125,7 +129,7 @@ def main():
         wandb.config.update(args)
 
     if args.dataset_type == 'synthetic':
-        dataset = DataProcessing(args.data_dir, args.batch_size)
+        dataset = DataProcessing(args.data_dir, args.batch_size, args.eval_batch_size)
         n_users = len(dataset.user2id)
         n_items = len(dataset.item2id)
         n_user_attrs = len(dataset.user_attribute2id)
@@ -163,7 +167,7 @@ def main():
     print('Building data loaders...')
     train_loader = dataset.get_loader()
     val_loader = dataset.get_val_loader()
-    if args.fixed_neg_eval:
+    if args.eval_type == 'fixed_neg_eval':
         dataset.read_neg_data_files()
     print('Data loaders built')
 
@@ -217,7 +221,7 @@ def main():
         n_item_attrs=n_item_attrs,
         train_loader=train_loader,
         val_loader=val_loader,
-        fixed_neg_eval=args.fixed_neg_eval,
+        eval_type=args.eval_type,
         dataset=dataset,
         loss_type=args.loss_type,
         optimizer_type=args.optimizer_type,

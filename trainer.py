@@ -21,7 +21,7 @@ class Trainer:
             n_item_attrs,
             train_loader,
             val_loader,
-            fixed_neg_eval = False,
+            eval_type = 'fixed_neg_eval',
             dataset = None,
             loss_type = 'bce',
             optimizer_type = 'adam',
@@ -41,7 +41,7 @@ class Trainer:
         self.n_item_attrs = n_item_attrs
         self.train_loader = train_loader
         self.val_loader = val_loader
-        self.fixed_neg_eval = fixed_neg_eval
+        self.eval_type = eval_type
         self.device = device
         self.model_name = model_name
         self.n_train_negs = n_train_negs
@@ -54,11 +54,8 @@ class Trainer:
         self.save_model = save_model
 
         self.dataset = dataset
-        if not self.fixed_neg_eval:
-            if dataset.dataset_type == 'joint' or dataset.dataset_type == 'joint-attribute':
-                self.gt_user_movie_matrix = self.gt_df_to_matrix(dataset.gt_user_movie)
-                self.gt_attribute_movie_matrix = self.gt_df_to_matrix(dataset.gt_attribute_movie)
-
+        if self.eval_type == 'full_eval':
+            dataset.get_gt_dict()
 
         self.criterion = {
             'user_item': self.get_criteria(self.loss_type),
@@ -158,10 +155,13 @@ class Trainer:
 
     def evaluate(self):
         eval_metrices = self.evaluate_loss()
-        if self.fixed_neg_eval:
+        if self.eval_type == 'fixed_neg_eval':
             eval_metrices.update(self.evaluate_with_fixed_negatives())
+        elif self.eval_type == 'full_eval':
+            eval_metrices.update(self.evaluate_with_ranking())
         else:
             eval_metrices.update(self.evaluate_rank_with_true_negatives())
+
         
         return eval_metrices
 
@@ -180,20 +180,20 @@ class Trainer:
         torch.save(self.model.state_dict(), os.path.join(self.model_dir, self.model_name + '_' + name + '.pth'))
     
     def get_best_score(self, eval_metrices):
-        if eval_metrices['hr_101_fixed_neg'] > self.best_hr:
-            self.best_hr = eval_metrices['hr_101_fixed_neg']
+        if eval_metrices['hr'] > self.best_hr:
+            self.best_hr = eval_metrices['hr']
             if self.save_model:
                 self.save_model_state('best_hr')
-        if eval_metrices['ndcg_101_fixed_neg'] > self.best_ndcg:
-            self.best_ndcg = eval_metrices['ndcg_101_fixed_neg']
+        if eval_metrices['ndcg'] > self.best_ndcg:
+            self.best_ndcg = eval_metrices['ndcg']
             if self.save_model:
                 self.save_model_state('best_ndcg')
-        if eval_metrices['hr_101_attr_fixed_neg'] > self.best_hr_attr:
-            self.best_hr_attr = eval_metrices['hr_101_attr_fixed_neg']
+        if eval_metrices['hr_attr'] > self.best_hr_attr:
+            self.best_hr_attr = eval_metrices['hr_attr']
             if self.save_model:
                 self.save_model_state('best_hr_attr')
-        if eval_metrices['ndcg_101_attr_fixed_neg'] > self.best_ndcg_attr:
-            self.best_ndcg_attr = eval_metrices['ndcg_101_attr_fixed_neg']
+        if eval_metrices['ndcg_attr'] > self.best_ndcg_attr:
+            self.best_ndcg_attr = eval_metrices['ndcg_attr']
             if self.save_model:
                 self.save_model_state('best_ndcg_attr')
         
@@ -342,10 +342,10 @@ class Trainer:
             scores = self.model(attribute + self.n_users, all_movies)
             hr_101_attr, ndcg_101_attr = self.get_hr_ndcg_101(scores)
 
-            return {'hr_101': hr_101,
-                    'ndcg_101': ndcg_101,
-                    'hr_101_attr': hr_101_attr,
-                    'ndcg_101_attr': ndcg_101_attr}
+            return {'hr': hr_101,
+                    'ndcg': ndcg_101,
+                    'hr_attr': hr_101_attr,
+                    'ndcg_attr': ndcg_101_attr}
 
     def evaluate_with_fixed_negatives(self):
         self.model.eval()
@@ -372,29 +372,51 @@ class Trainer:
             hr_101_attr, ndcg_101_attr = self.get_hr_ndcg_101(scores)
 
             return {
-                        'hr_101_fixed_neg': hr_101,
-                        'ndcg_101_fixed_neg': ndcg_101,
-                        'hr_101_attr_fixed_neg': hr_101_attr,
-                        'ndcg_101_attr_fixed_neg': ndcg_101_attr
+                        'hr': hr_101,
+                        'ndcg': ndcg_101,
+                        'hr_attr': hr_101_attr,
+                        'ndcg_attr': ndcg_101_attr
                     }
 
     def evaluate_with_ranking(self):
         self.model.eval()
         with torch.no_grad():
-            mrr, mr = [], []
+            user_movie_rank_list = []
+            attribute_movie_rank_list = []
             for batch in tqdm(self.val_loader):
-                user_stream, item_stream = batch[0][:,0], batch[0][:,1]
+                user_stream, item_stream, tuple_type = batch[0][:,0], batch[0][:,1], batch[0][:,2]
                 user_stream = user_stream.to(self.device)
                 item_stream = item_stream.to(self.device)
-                mask = self.get_mask(user_stream, item_stream)
-                all_item_score = self.model.predict_item(user_stream.reshape(1, -1)).T
+                tuple_type = tuple_type.to(self.device)
+
+                user = user_stream[tuple_type == 0]
+                item = item_stream[tuple_type == 0]
+                mask = self.get_mask(user, item, self.dataset.gt_user_movie_dict)
+                all_item_score = self.model.predict_item(user.reshape(1, -1)).T
                 all_item_score[~mask] = - torch.inf
                 pred_order = torch.argsort(all_item_score, dim=-1, descending=True)
-                rank = torch.where(pred_order == item_stream.reshape(-1, 1))[1] + 1
-                mr.extend(rank.tolist())
-                mrr.extend((1.0 / (rank)).tolist())
-            eval_metrices = {
-                'mrr': sum(mrr) / len(mrr), 
-                'mr': sum(mr) / len(mr)
-            }
-        return eval_metrices
+                rank = torch.where(pred_order == item.reshape(-1, 1))[1] + 1
+                user_movie_rank_list.append(rank)
+
+                if 1 in tuple_type:
+                    user = user_stream[tuple_type == 1]
+                    item = item_stream[tuple_type == 1]
+                    mask = self.get_mask(user, item, self.dataset.gt_attribute_movie_dict)
+                    all_item_score = self.model.predict_item(user.reshape(1, -1)).T
+                    all_item_score[~mask] = - torch.inf
+                    pred_order = torch.argsort(all_item_score, dim=-1, descending=True)
+                    rank = torch.where(pred_order == item.reshape(-1, 1))[1] + 1
+                    attribute_movie_rank_list.append(rank)
+
+            hr = sum(user_movie_rank_list <= 10) / len(user_movie_rank_list)
+            ndcg = sum(1.0 / torch.log2(user_movie_rank_list + 1)) / len(user_movie_rank_list)
+            hr_attr = sum(attribute_movie_rank_list <= 10) / len(attribute_movie_rank_list)
+            ndcg_attr = sum(1.0 / torch.log2(attribute_movie_rank_list + 1)) / len(attribute_movie_rank_list)
+            print("here")
+
+            return {
+                        'hr': hr.item(),
+                        'ndcg': ndcg.item(),
+                        'hr_attr': hr_attr.item(),
+                        'ndcg_attr': ndcg_attr.item()
+                    }
