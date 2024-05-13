@@ -398,21 +398,22 @@ class Trainer:
                 rank = torch.where(pred_order == item.reshape(-1, 1))[1] + 1
                 user_movie_rank_list.append(rank)
 
-                if 1 in tuple_type:
-                    user = user_stream[tuple_type == 1]
-                    item = item_stream[tuple_type == 1]
-                    mask = self.get_mask(user, item, self.dataset.gt_attribute_movie_dict)
-                    all_item_score = self.model.predict_item(user.reshape(1, -1)).T
+                if 2 in tuple_type:
+                    attr = user_stream[tuple_type == 2]
+                    item = item_stream[tuple_type == 2]
+                    mask = self.get_mask(attr, item, self.dataset.gt_attribute_movie_dict)
+                    all_item_score = self.model.predict_item((attr + self.n_users).reshape(1, -1)).T
                     all_item_score[~mask] = - torch.inf
                     pred_order = torch.argsort(all_item_score, dim=-1, descending=True)
                     rank = torch.where(pred_order == item.reshape(-1, 1))[1] + 1
                     attribute_movie_rank_list.append(rank)
 
+            user_movie_rank_list = torch.cat(user_movie_rank_list)
+            attribute_movie_rank_list = torch.cat(attribute_movie_rank_list)
             hr = sum(user_movie_rank_list <= 10) / len(user_movie_rank_list)
             ndcg = sum(1.0 / torch.log2(user_movie_rank_list + 1)) / len(user_movie_rank_list)
             hr_attr = sum(attribute_movie_rank_list <= 10) / len(attribute_movie_rank_list)
             ndcg_attr = sum(1.0 / torch.log2(attribute_movie_rank_list + 1)) / len(attribute_movie_rank_list)
-            print("here")
 
             return {
                         'hr': hr.item(),
